@@ -216,14 +216,14 @@
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
               ["Khách hàng", "Sale", "Ngành", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
-                .map((x, i) => h("th", { key: i, className: T.th(i >= 3 && i <= 7) }, x)))),
+                .map((x, i) => h("th", { key: i, className: "px-3 py-2 text-center align-middle font-semibold" + (i === 0 ? " min-w-[200px]" : i === 1 ? " min-w-[140px]" : "") }, x)))),
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
               const action = isMine(k) && (k.trang_thai === "chua" || (!D.PHE_DUYET && !(kyMeta && kyMeta.khoa)) || ["nhap", "tra_lai"].includes(k.trang_thai)) ? (k.trang_thai === "chua" ? "Giải trình" : "Sửa")
                 : k.nv.some((nv) => approveNv.has(nv)) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
               return h("tr", { key: k.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(k.key) },
-                h("td", { className: T.td }, h("div", { className: "font-medium text-slate-800", title: k.ten_kh_goc }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
-                h("td", { className: T.td + " whitespace-nowrap" }, k.ten_nv),
+                h("td", { className: T.td + " max-w-[300px] whitespace-nowrap" }, h("div", { className: "truncate font-medium text-slate-800", title: k.ten_kh + (k.ten_kh_goc && k.ten_kh_goc !== k.ten_kh ? "\n" + k.ten_kh_goc : "") }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
+                h("td", { className: T.td + " max-w-[200px] text-[12px]" }, k.nv.map((nv) => h("div", { key: nv }, nv))),
                 h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, n))),
                 h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
                 h("td", { className: T.num + (d > 0.5e6 ? " text-red-600" : d < -0.5e6 ? " text-green-700" : " text-slate-400") }, (d > 0 ? "+" : "") + fmtTr(d)),
