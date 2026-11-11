@@ -64,7 +64,8 @@ type Perm = {
   all: boolean;               // xem tất cả
   bu: string[] | null;        // ngành hàng được xem (product_manager; null = không theo ngành)
   amNv: Set<string>;          // area_manager: tên PS phụ trách (chuẩn hoá) — xem + giải trình
-  myNv: Set<string>;          // tên NV = chính mình (dm_ps hoặc gắn tay ở sale_map) — chỉ xem
+  myNv: Set<string>;          // tên NV = chính mình (dm_ps hoặc gắn tay ở sale_map)
+  selfNv: Set<string>;        // tên NV của mình mà không có area manager phụ trách → tự giải trình
   approveNv: Set<string>;     // tên NV mình là người duyệt (gán ở sale_map)
   canImport: boolean;
   approveAll: boolean;
@@ -126,6 +127,27 @@ function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho
   return dir.filter((p) => keys.has(normName(p.ps)) || (!!hoTen && normName(p.ten_ps) === hoTen));
 }
 
+// Tài khoản area_manager không còn dùng — không tham gia phân quyền giải trình.
+const AM_EXCLUDE = new Set(["thnk_manager"]);
+
+type AmRow = { username: string; role: string; bu: string | null; scope: string | null; mien: string | null; ho_va_ten: string | null; active: boolean | null };
+async function loadAms(db: SupabaseClient): Promise<AmRow[]> {
+  const { data, error } = await db.schema("shared").from("users")
+    .select("username, role, bu, scope, mien, ho_va_ten, active").eq("role", "area_manager");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as AmRow[]).filter((u) => u.active !== false && !AM_EXCLUDE.has(u.username));
+}
+// Tên PS (chuẩn hoá) → danh sách AM phụ trách.
+function amCoverage(dir: PsRow[], ams: AmRow[]) {
+  const cov = new Map<string, string[]>();
+  for (const u of ams) {
+    for (const k of managedPs(dir, { username: u.username, scope: u.scope, mien: u.mien, bu: u.bu, ho_ten: u.ho_va_ten })) {
+      cov.set(k, [...(cov.get(k) ?? []), u.username]);
+    }
+  }
+  return cov;
+}
+
 async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[]; dir: PsRow[] }> {
   const [{ data, error }, { data: dirData, error: e2 }] = await Promise.all([
     db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet"),
@@ -148,6 +170,7 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
       ...psOfUser(dir, { username: me, scope: s.scope, ho_ten: s.ho_ten }).map((p) => normName(p.ten_ps)),
     ].filter(Boolean)),
     approveNv: new Set(map.filter((m) => m.nguoi_duyet === me).map((m) => normName(m.ten_nv))),
+    selfNv: new Set(),
     canImport: role === "admin",
     approveAll: role === "admin" || role === "manager",
     noAccess: role === "purchasing",
@@ -156,8 +179,13 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
     if (!buList.length || buList.includes("all")) perm.all = true;
     else perm.bu = buList;
   }
-  if (role === "area_manager") {
+  if (role === "area_manager" && !AM_EXCLUDE.has(me)) {
     perm.amNv = managedPs(dir, { username: me, scope: s.scope, mien: s.mien, bu: s.bu, ho_ten: s.ho_ten });
+  }
+  // Sale không có area manager phụ trách (vd CTTM Miền Nam) thì tự giải trình KH của mình.
+  if (perm.myNv.size) {
+    const cov = amCoverage(dir, await loadAms(db));
+    for (const n of perm.myNv) if (!cov.has(n)) perm.selfNv.add(n);
   }
   return { perm, map, dir };
 }
@@ -170,9 +198,11 @@ function canSee(p: Perm, row: { bu?: string | null; ten_nv: string }) {
   return p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n);
 }
 
-// Người giải trình: area_manager phụ trách PS đó; admin sửa được mọi KH.
+// Người giải trình: admin, manager (mọi KH); area_manager phụ trách PS đó; sale tự giải trình nếu không có AM.
 function canEdit(p: Perm, tenNv: string) {
-  return p.role === "admin" || p.amNv.has(normName(tenNv));
+  if (p.role === "admin" || p.role === "manager") return true;
+  const n = normName(tenNv);
+  return p.amNv.has(n) || p.selfNv.has(n);
 }
 
 // Người duyệt: admin, manager, hoặc người được chỉ định ở sale_map.
@@ -226,7 +256,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     case "whoami":
       return {
         user: { username: s.username, ho_ten: s.ho_ten, role: s.role, bu: s.bu, mien: s.mien },
-        permission: { all: perm.all, bu: perm.bu, giaiTrinh: perm.amNv.size > 0 || perm.role === "admin", canImport: perm.canImport, approveAll: perm.approveAll },
+        permission: { all: perm.all, bu: perm.bu, giaiTrinh: perm.amNv.size > 0 || perm.selfNv.size > 0 || perm.all, canImport: perm.canImport, approveAll: perm.approveAll },
       };
 
     case "list_ky": {
@@ -265,7 +295,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
           ...r, _can_approve: canApprove(perm, r.ten_nv),
         })),
         // null = sửa được tất cả (admin)
-        can_edit_nv: perm.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(perm, nv)),
+        can_edit_nv: perm.role === "admin" || perm.role === "manager" ? null : [...buByNv.keys()].filter((nv) => canEdit(perm, nv)),
         can_approve_nv: PHE_DUYET ? [...buByNv.keys()].filter((nv) => canApprove(perm, nv)) : [],
         phe_duyet: PHE_DUYET,
         // BU / team của từng tên NV theo dm_ps (cho bảng tổng hợp theo team)
@@ -439,25 +469,21 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       ]);
       const users = (usersRaw ?? []).filter((u: any) => u.active !== false);
       const dir = (psDir ?? []) as PsRow[];
-      // Tự gắn theo dm_ps: tài khoản sale (ps) và area_manager phụ trách của từng tên NV.
-      const auto: Record<string, { sale: string[]; am: string[]; area: string | null; bu: string | null }> = {};
+      const cov = amCoverage(dir, users.filter((u: any) => String(u.role || "").toLowerCase() === "area_manager" && !AM_EXCLUDE.has(u.username)) as AmRow[]);
+      // Tự gắn theo dm_ps: tài khoản sale (ps), area manager phụ trách; không có AM → sale tự giải trình.
+      const auto: Record<string, { sale: string[]; am: string[]; tu_gt: boolean; area: string | null; bu: string | null; bu_name: string | null; team: string | null }> = {};
       for (const p0 of dir) {
         if (!p0.ten_ps) continue;
         const k = normName(p0.ten_ps);
-        auto[k] = auto[k] || { sale: [], am: [], area: p0.area, bu: p0.bu_code };
+        auto[k] = auto[k] || { sale: [], am: cov.get(k) ?? [], tu_gt: false, area: p0.area, bu: p0.bu_code, bu_name: p0.bu, team: p0.team };
       }
       for (const u of users as any[]) {
-        const role = String(u.role || "").toLowerCase();
-        if (role === "area_manager") {
-          for (const k of managedPs(dir, { username: u.username, scope: u.scope, mien: u.mien, bu: u.bu, ho_ten: u.ho_va_ten })) {
-            if (auto[k]) auto[k].am.push(u.username);
-          }
-        } else {
-          for (const p0 of psOfUser(dir, { username: u.username, scope: u.scope, ho_ten: u.ho_va_ten })) {
-            if (p0.ten_ps) auto[normName(p0.ten_ps)].sale.push(u.username);
-          }
+        if (String(u.role || "").toLowerCase() === "area_manager") continue;
+        for (const p0 of psOfUser(dir, { username: u.username, scope: u.scope, ho_ten: u.ho_va_ten })) {
+          if (p0.ten_ps) auto[normName(p0.ten_ps)].sale.push(u.username);
         }
       }
+      for (const v of Object.values(auto)) v.tu_gt = !v.am.length && v.sale.length > 0;
       let names: string[] = [];
       if (latest?.[0]?.import_id) {
         const agg = await fetchAll((a, b) => D().from("v_cong_no_agg").select("ten_nv").eq("import_id", latest[0].import_id).order("ten_nv").range(a, b));

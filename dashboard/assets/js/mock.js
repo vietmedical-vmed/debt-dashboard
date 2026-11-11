@@ -97,10 +97,16 @@
       const mien = String(u.scope || "").split(",").map((x) => x.trim());
       for (const d of dir()) if ((buList.includes("all") || buList.includes(d.bu_code)) && mien.includes(d.area)) p.amNv.add(norm(d.ten_ps));
     }
+    // Sale không có area manager phụ trách thì tự giải trình (giống debt-api).
+    p.selfNv = new Set();
+    if (p.myNv.size && role !== "area_manager") {
+      const cov = new Set(Object.values(USERS).filter((x) => x.role === "area_manager").flatMap((x) => [...perm(x).p.amNv]));
+      for (const n of p.myNv) if (!cov.has(n)) p.selfNv.add(n);
+    }
     return { p, map };
   }
   const canSee = (p, r) => { const n = norm(r.ten_nv); return p.all || (p.bu && r.bu && p.bu.includes(r.bu)) || p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n); };
-  const canEdit = (p, nv) => p.role === "admin" || p.amNv.has(norm(nv));
+  const canEdit = (p, nv) => p.role === "admin" || p.role === "manager" || p.amNv.has(norm(nv)) || p.selfNv.has(norm(nv));
   const canApprove = (p, nv) => p.approveAll || p.approveNv.has(norm(nv));
 
   function agg(rows) {
@@ -148,7 +154,7 @@
           hang_vay: (S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r)),
           thu_tien: (S.thu_tien[meta.import_id] || []).filter((r) => canSee(P, r)),
           giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && seeNv(g.ten_nv)).map((g) => ({ ...g, _can_approve: canApprove(P, g.ten_nv) })),
-          can_edit_nv: P.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(P, nv)),
+          can_edit_nv: P.role === "admin" || P.role === "manager" ? null : [...buByNv.keys()].filter((nv) => canEdit(P, nv)),
           can_approve_nv: PHE_DUYET ? [...buByNv.keys()].filter((nv) => canApprove(P, nv)) : [],
           phe_duyet: PHE_DUYET,
           ps_dir: [...new Set([...all, ...(S.hang_vay[meta.import_id] || [])].filter((r) => canSee(P, r)).map((r) => r.ten_nv))].map((nv) => {
@@ -254,9 +260,9 @@
         for (const n of names) {
           const d = dir().find((x) => norm(x.ten_ps) === norm(n));
           if (!d) { auto[n] = null; continue; }
-          auto[n] = { area: d.area, bu: d.bu_code,
-            sale: all.filter((x) => x.role === "ps" && norm(x.scope) === norm(d.ps)).map((x) => x.username),
-            am: all.filter((x) => x.role === "area_manager" && perm(x).p.amNv.has(norm(n))).map((x) => x.username) };
+          const sale = all.filter((x) => x.role === "ps" && norm(x.scope) === norm(d.ps)).map((x) => x.username);
+          const am = all.filter((x) => x.role === "area_manager" && perm(x).p.amNv.has(norm(n))).map((x) => x.username);
+          auto[n] = { area: d.area, bu: d.bu_code, bu_name: d.bu, team: d.team, sale, am, tu_gt: !am.length && sale.length > 0 };
         }
         return { ok: true, rows: Object.values(S.sale_map), users, ten_nv: names, auto };
       }

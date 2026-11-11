@@ -1,4 +1,4 @@
-// Theo sale: bảng tổng hợp nợ A2–A4 theo nhóm nợ × BU/team (admin, manager) + bảng theo từng sale.
+// Theo sale: bảng theo từng sale. Kèm tab "Tổng hợp A2–A4" (admin, manager): nhóm nợ × BU/team.
 (function () {
   const { useState } = React;
   const h = React.createElement;
@@ -136,8 +136,7 @@
             h("td", { className: T.td + " border-l border-slate-200" }))))));
   }
 
-  function TheoSale({ user }) {
-    const showPivot = user && ["admin", "manager"].includes(user.role);
+  function TheoSale() {
     return h(D.KyScreen, null, ({ data, f }) => {
       const rows = build(data, f);
       const tot = rows.reduce((t, s) => {
@@ -163,7 +162,7 @@
         h("td", { className: T.num }, s.need ? fmtPct((s.st[D.DONE] || 0) / s.need, 0) : "—"),
         h("td", { className: T.num }, s.camKet || "—"),
         h("td", { className: T.num }, s.camKet ? s.camKetThu + " (" + fmtPct(s.camKetThu / s.camKet, 0) + ")" : "—"));
-      return h("div", { className: "flex flex-col gap-4" }, showPivot && h(Pivot, { data, f }), h(UI.Panel, {
+      return h("div", { className: "flex flex-col gap-4" }, h(UI.Panel, {
         title: "Công nợ & giải trình theo sale · " + fmtKyLabel(data.meta.ky),
         subtitle: "Triệu đồng · bấm vào sale để mở danh sách giải trình · Hẹn thu = số KH mà giải trình " + fmtKyLabel(data.meta.ky_truoc) + " dự kiến thu trong hoặc trước " + fmtKyLabel(data.meta.ky) + "; Đã có thu = số KH đó có tiền về trong tháng",
       },
@@ -182,4 +181,10 @@
   }
 
   R.register("/theo-sale", TheoSale);
+
+  function TongHop({ user }) {
+    if (!user || !["admin", "manager"].includes(user.role)) return h(UI.Empty, null, "Chỉ admin và manager xem được bảng tổng hợp.");
+    return h(D.KyScreen, null, ({ data, f }) => h(Pivot, { data, f }) || h(UI.Empty, null, "Không có nợ A2–A4 trong phạm vi lọc."));
+  }
+  R.register("/tong-hop", TongHop);
 })();

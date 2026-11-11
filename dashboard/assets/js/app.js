@@ -11,6 +11,7 @@
   const TABS = [
     { path: "/tong-quan", label: "Tổng quan" },
     { path: "/giai-trinh", label: "Giải trình" },
+    { path: "/tong-hop", label: "Tổng hợp A2–A4", roles: ["admin", "manager"] },
     { path: "/theo-sale", label: "Theo sale" },
     { path: "/hang-vay", label: "Hàng vay chưa xuất HĐ" },
     { path: "/quan-tri", label: "Quản trị", admin: true },
@@ -42,7 +43,7 @@
     const keep = new URLSearchParams();
     for (const k of KEEP) query.getAll(k).forEach((v) => keep.append(k, v));
     const reload = () => { window.DEBT_DATA.invalidate(); setNonce((n) => n + 1); };
-    const tabs = TABS.filter((t) => !t.admin || user.role === "admin");
+    const tabs = TABS.filter((t) => (!t.admin || user.role === "admin") && (!t.roles || t.roles.includes(user.role)));
 
     return h(ReloadContext.Provider, { value: nonce },
       h(FilterSlotContext.Provider, { value: slot },

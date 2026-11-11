@@ -30,7 +30,8 @@ Frontend (GitHub Pages)            Backend (Supabase nrfxymnfmjhbsgpipvkb)
 |---|---|---|
 | Tổng quan | Tất cả | KPI, tiến độ giải trình, biến động dư nợ, cơ cấu nhóm nợ / nhóm KH, top 15 KH quá hạn |
 | Giải trình | Area manager, quản lý, sale (xem) | Danh sách KH × sale có nợ A2–A4; popup hóa đơn A2–A4, giải trình + tháng dự kiến thu, duyệt / trả lại, lịch sử |
-| Theo sale | Quản lý | Admin/manager: bảng tổng hợp nợ A2–A4 theo nhóm nợ × BU → team (dm_ps) kèm cột đã/chưa giải trình, xuất Excel. Mọi người: dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
+| Tổng hợp A2–A4 | Admin, manager | Nhóm nợ A4→A2 × KH, cột BU → team (dm_ps), cột cuối đã/chưa giải trình, xuất Excel |
+| Theo sale | Tất cả | Dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
 | Hàng vay chưa xuất HĐ | Tất cả | Theo KH × sale, xem chứng từ, xuất Excel |
 | Quản trị | Admin | Nạp file, hạn giải trình, khoá kỳ, xem phân quyền theo dm_ps, gắn tay / người duyệt riêng |
 
@@ -41,12 +42,13 @@ Tên NV trong file kế toán = `dm_ps.ten_ps`.
 | Role | Xem | Giải trình | Duyệt |
 |---|---|---|---|
 | admin | Tất cả | Mọi KH (thay khi chưa có area manager) | Tất cả · nạp file · cấu hình |
-| manager | Tất cả | — | Tất cả |
+| manager | Tất cả | Mọi KH | Tất cả |
 | area_manager | KH của các PS phụ trách: `dm_ps.bu_code` thuộc `users.bu`, `dm_ps.area` thuộc `users.scope` (tên miền; trống thì lấy `users.mien` MB/MN/BOTH). Miền nào BU có > 1 team Active (vd CH&CS Miền Nam) thì chỉ team của AM: team trên dòng `dm_ps` của chính AM, hoặc team trùng tên tài khoản (`CHCS 1 Miền Nam` ↔ `CHCS 1 MN`) | **Người giải trình chính** cho các PS đó | — |
 | product_manager | Ngành hàng theo `users.bu` (chcs/thnk/cttm, `all` = tất cả) | — | — |
-| ps (sale) | Chỉ KH của mình: `dm_ps.ps` = `users.scope` (hoặc username), hoặc `dm_ps.ten_ps` = họ tên | — (chỉ xem) | — |
+| ps (sale) | Chỉ KH của mình: `dm_ps.ps` = `users.scope` (hoặc username), hoặc `dm_ps.ten_ps` = họ tên | Chỉ khi PS của mình **không có area manager** phụ trách (hiện: CTTM Miền Nam) | — |
 | purchasing | Không vào được | | |
 
+Tài khoản area manager không dùng nữa (hiện: `thnk_manager`) khai báo ở `AM_EXCLUDE` trong `debt-api`.
 Màn Quản trị có thể gắn tay tài khoản xem cho tên không có trong `dm_ps`, và chỉ định người duyệt riêng cho từng tên NV.
 Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả về cho người xem được tất cả.
 
