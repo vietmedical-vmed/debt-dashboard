@@ -51,6 +51,9 @@
   const fmtTr = (v, digits = 0) => (v == null || v === "") ? "—"
     : (Number(v) / 1e6).toLocaleString("vi-VN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   const fmtPct = (v, digits = 1) => (v == null || !isFinite(v)) ? "—" : (v * 100).toLocaleString("vi-VN", { minimumFractionDigits: digits, maximumFractionDigits: digits }) + "%";
+  // Ngành hàng trong file kế toán → tên BU hiển thị (toàn app, kể cả Excel). Dữ liệu / khoá vẫn giữ tên ngành gốc.
+  const BU_NAME = { "ctch": "CH&CS", "can thiệp tim mạch": "CTTM & CTUT", "nội soi tiêu hao": "THNS & CSVT" };
+  const buName = (nganh) => (nganh == null ? "" : BU_NAME[String(nganh).normalize("NFC").trim().toLowerCase()] || String(nganh));
   const fmtKyLabel = (ky) => { if (!ky) return "—"; const [y, m] = ky.split("-"); return "T" + m + "/" + y; };
 
   // ─── Context: Reload mềm + ô lọc trên header ──────────────
@@ -244,7 +247,7 @@
   const fieldLabel = "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
   window.DEBT_UI = {
-    fmtInt, fmtTien, fmtKy, fmtDate, deaccent, fyOf, fyLabel, fmtTr, fmtPct, fmtKyLabel,
+    fmtInt, fmtTien, fmtKy, fmtDate, deaccent, fyOf, fyLabel, fmtTr, fmtPct, fmtKyLabel, buName,
     I, ReloadContext, useReload, FilterSlotContext, FilterBar, FilterSelect,
     StatCard, Panel, Badge, Swatch, Legend, Segmented, SearchInput,
     LoadingBlock, RefreshingBar, ErrorBox, Empty, Modal, Pager, T, btn, input, fieldLabel,

@@ -90,7 +90,7 @@
     };
   }
 
-  // Thanh lọc chuẩn: Kỳ + Ngành hàng + Sale + Nhóm KH.
+  // Thanh lọc chuẩn: Kỳ + BU (ngành hàng) + Sale + Nhóm KH.
   function KyFilterBar({ kyList, data, f, extra }) {
     const curRows = data ? data.agg.filter((r) => r.ky === data.meta.ky) : [];
     const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi"));
@@ -101,7 +101,7 @@
         options: (kyList || []).map((k) => ({ value: k.ky, label: UI.fmtKyLabel(k.ky) + (k.khoa ? " (đã khoá)" : "") })),
         selected: f.ky ? [f.ky] : [], onChange: (v) => f.set({ ky: v[0] || "" }),
       }),
-      h(UI.FilterSelect, { label: "Ngành hàng", multiple: true, options: uniq(curRows.map((r) => r.nganh_hang)), selected: f.nganh, onChange: (v) => f.set({ nganh: v }) }),
+      h(UI.FilterSelect, { label: "BU", multiple: true, options: uniq(curRows.map((r) => r.nganh_hang)).map((n) => ({ value: n, label: UI.buName(n) })), selected: f.nganh, onChange: (v) => f.set({ nganh: v }) }),
       nvs.length > 1 && h(UI.FilterSelect, { label: "Sale", multiple: true, searchable: true, options: nvs, selected: f.nv, onChange: (v) => f.set({ nv: v }) }),
       h(UI.FilterSelect, { label: "Nhóm KH", multiple: true, options: uniq(curRows.map((r) => r.loai_hinh)), selected: f.loai, onChange: (v) => f.set({ loai: v }) }),
       extra);

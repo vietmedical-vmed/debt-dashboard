@@ -61,14 +61,14 @@
     const rows = meta.bien_dong || [];
     if (!rows.length) return null;
     const f1 = (v) => (v == null ? "—" : Math.round(v).toLocaleString("vi-VN"));
-    return h(UI.Panel, { title: "Biến động dư nợ theo ngành hàng (triệu đồng)", subtitle: "Theo sheet BC của kế toán, toàn khối (không áp bộ lọc)" },
+    return h(UI.Panel, { title: "Biến động dư nợ theo BU (triệu đồng)", subtitle: "Theo sheet BC của kế toán, toàn khối (không áp bộ lọc)" },
       h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
         h("thead", null, h("tr", { className: T.headRow },
-          ["Ngành hàng", "Dư nợ đầu kỳ", "Doanh thu mới", "Thu tiền", "Điều chỉnh KT", "Dư nợ cuối kỳ", "+/- trong kỳ"].map((x, i) => h("th", { key: x, className: T.th(i > 0) }, x)))),
+          ["BU", "Dư nợ đầu kỳ", "Doanh thu mới", "Thu tiền", "Điều chỉnh KT", "Dư nợ cuối kỳ", "+/- trong kỳ"].map((x, i) => h("th", { key: x, className: T.th(i > 0) }, x)))),
         h("tbody", null, rows.map((r, i) => {
           const tot = r.nganh_hang === "Tổng";
           return h("tr", { key: r.nganh_hang, className: tot ? "border-t border-slate-200 bg-slate-50 font-semibold" : T.row(i) },
-            h("td", { className: T.td }, r.nganh_hang), h("td", { className: T.num }, f1(r.dau_ky)), h("td", { className: T.num }, f1(r.doanh_thu)),
+            h("td", { className: T.td }, tot ? r.nganh_hang : UI.buName(r.nganh_hang)), h("td", { className: T.num }, f1(r.dau_ky)), h("td", { className: T.num }, f1(r.doanh_thu)),
             h("td", { className: T.num }, f1(r.thu_tien)), h("td", { className: T.num }, f1(r.dieu_chinh)), h("td", { className: T.num }, f1(r.cuoi_ky)),
             h("td", { className: T.num }, h(Delta, { v: (r.cuoi_ky - r.dau_ky) * 1e6 })));
         })))));

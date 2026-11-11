@@ -135,8 +135,8 @@
     for (const g of saved) {
       const k = g.ma_kh + SEP + g.nganh_hang + SEP + (g.nhom_gt || "");
       if (!newPair.has(k)) {
-        an.push({ ...g, ly_do: newKhNganh.has(g.ma_kh + SEP + g.nganh_hang) ? "Ngành này còn nợ A2–A4 nhưng không còn sale của nhóm giải trình này"
-          : newKhQh.has(g.ma_kh) ? "KH còn nợ A2–A4 nhưng không còn ở ngành này" : newKh.has(g.ma_kh) ? "KH không còn nợ A2–A4" : "Mã KH không còn trong file" });
+        an.push({ ...g, ly_do: newKhNganh.has(g.ma_kh + SEP + g.nganh_hang) ? "BU này còn nợ A2–A4 nhưng không còn sale của nhóm giải trình này"
+          : newKhQh.has(g.ma_kh) ? "KH còn nợ A2–A4 nhưng không còn ở BU này" : newKh.has(g.ma_kh) ? "KH không còn nợ A2–A4" : "Mã KH không còn trong file" });
       } else if (D.canCapNhat(g.du_no_qua_han, newPair.get(k))) {
         capNhat.push({ ...g, moi: newPair.get(k) });
       }
@@ -169,16 +169,16 @@
         capNhat.length ? h("b", null, capNhat.length + " sẽ được đánh dấu \"Cần cập nhật\"") : "không giải trình nào lệch số đáng kể"),
       an.length > 0 && h("div", { className: "max-h-48 overflow-y-auto rounded border border-red-200 bg-white" },
         h("table", { className: T.table },
-          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Ngành", "A2–A4 lúc lưu (tr)", "Lý do bị ẩn"].map((x, i) => h("th", { key: x, className: T.th(i === 2) }, x)))),
+          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "BU", "A2–A4 lúc lưu (tr)", "Lý do bị ẩn"].map((x, i) => h("th", { key: x, className: T.th(i === 2) }, x)))),
           h("tbody", null, an.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang + (g.nhom_gt || ""), className: T.row(i) },
-            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.nganh_hang),
+            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, UI.buName(g.nganh_hang)),
             h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.td + " text-red-700" }, g.ly_do)))))),
       capNhat.length > 0 && h("details", { className: "rounded border border-amber-200 bg-white px-3 py-2" },
         h("summary", { className: "cursor-pointer font-medium" }, "Xem " + capNhat.length + " giải trình sẽ cần cập nhật"),
         h("table", { className: T.table + " mt-2" },
-          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Ngành", "A2–A4 lúc lưu (tr)", "A2–A4 file mới (tr)"].map((x, i) => h("th", { key: x, className: T.th(i >= 2) }, x)))),
+          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "BU", "A2–A4 lúc lưu (tr)", "A2–A4 file mới (tr)"].map((x, i) => h("th", { key: x, className: T.th(i >= 2) }, x)))),
           h("tbody", null, capNhat.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang + (g.nhom_gt || ""), className: T.row(i) },
-            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.nganh_hang),
+            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, UI.buName(g.nganh_hang)),
             h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.num }, fmtTr(g.moi, 1))))))),
       h("label", { className: "flex items-center gap-2 font-medium" },
         h("input", { type: "checkbox", checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }),

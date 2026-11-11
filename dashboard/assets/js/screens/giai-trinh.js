@@ -116,7 +116,7 @@
     const stat = (label, v, cls = "") => h("div", { className: "rounded-md border border-slate-200 bg-white px-3 py-2" },
       h("div", { className: "text-[10px] uppercase tracking-wide text-slate-400" }, label), h("div", { className: "text-[15px] font-semibold tabular-nums " + cls }, v));
 
-    return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + k.nganh_hang + "  ·  người giải trình: " + (k.nhom_label || "—") + "  (sale: " + k.ten_nv + ")" },
+    return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + UI.buName(k.nganh_hang) + "  ·  người giải trình: " + (k.nhom_label || "—") + "  (sale: " + k.ten_nv + ")" },
       h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
@@ -169,7 +169,7 @@
   // ── Xuất Excel danh sách giải trình ───────────────────────────────
   function exportExcel(list, meta) {
     const rows = list.map((k, i) => ({
-      "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Tên KH (kế toán)": k.ten_kh_goc, "Sale": k.ten_nv, "Ngành hàng": k.nganh.join(", "), "Nhóm KH": k.loai_hinh,
+      "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Tên KH (kế toán)": k.ten_kh_goc, "Sale": k.ten_nv, "BU": k.nganh.map(UI.buName).join(", "), "Nhóm KH": k.loai_hinh,
       "A2–A4 (tr)": Math.round(k.qua_han / 1e5) / 10, "A2–A4 kỳ trước (tr)": Math.round(k.prev_qua_han / 1e5) / 10,
       "Tổng dư nợ (tr)": Math.round(k.tong / 1e5) / 10, "Thu trong tháng (tr)": Math.round(k.thu / 1e5) / 10,
       "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label + (k.can_cap_nhat ? " (cần cập nhật)" : ""),
@@ -214,10 +214,10 @@
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
 
       list.length === 0 ? h(UI.Empty, null, need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
-      : h(UI.Panel, { title: "Khách hàng × ngành hàng phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
+      : h(UI.Panel, { title: "Khách hàng × BU phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
-              ["Khách hàng", "Sale", "Ngành", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
+              ["Khách hàng", "Sale", "BU", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
                 .map((x, i) => h("th", { key: i, className: "px-3 py-2 text-center align-middle font-semibold" + (i === 0 ? " min-w-[200px]" : i === 1 ? " min-w-[140px]" : "") }, x)))),
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
@@ -227,7 +227,7 @@
                 h("td", { className: T.td + " max-w-[300px] whitespace-nowrap" }, h("div", { className: "truncate font-medium text-slate-800", title: k.ten_kh + (k.ten_kh_goc && k.ten_kh_goc !== k.ten_kh ? "\n" + k.ten_kh_goc : "") }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
                 h("td", { className: T.td + " max-w-[200px] text-[12px]" }, k.nv.map((nv) => h("div", { key: nv }, nv)),
                   k.nhom_gt.startsWith("am:") && h("div", { className: "mt-0.5 text-[11px] text-slate-400" }, "GT: " + k.nhom_label)),
-                h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, n))),
+                h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, UI.buName(n)))),
                 h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
                 h("td", { className: T.num + (d > 0.5e6 ? " text-red-600" : d < -0.5e6 ? " text-green-700" : " text-slate-400") }, (d > 0 ? "+" : "") + fmtTr(d)),
                 h("td", { className: T.num }, fmtTr(k.tong)),

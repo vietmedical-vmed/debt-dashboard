@@ -88,7 +88,7 @@
       const label = (k) => {
         const sameNganh = items.filter((u) => u.nganh_hang === k.nganh_hang).length > 1;
         const parts = [];
-        if (nganhCount > 1) parts.push(k.nganh_hang);
+        if (nganhCount > 1) parts.push(UI.buName(k.nganh_hang));
         if (sameNganh) parts.push(k.nhom_label || "—");
         return parts.join(" · ");
       };
@@ -99,7 +99,7 @@
         need: need.length,
         done: need.filter((k) => k.trang_thai === D.DONE).length,
         total: need.length,
-        list: need.map((k) => ({ nganh: [k.nganh_hang, k.nhom_label].filter(Boolean).join(" · "), st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
+        list: need.map((k) => ({ nganh: [UI.buName(k.nganh_hang), k.nhom_label].filter(Boolean).join(" · "), st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
         chi_tiet: withGt.map((k) => pre(k) + (k.gt.ke_hoach || "")).join("\n"),
         thang: withGt.map((k) => pre(k) + (k.gt.thang_du_kien || "")).join("\n"),
       };
@@ -182,7 +182,7 @@
     const extraHead = (label, cls) => h("th", { className: T.th() + " border-l border-slate-200 bg-slate-50 " + (cls || ""), rowSpan: 2 }, label);
     return h(UI.Panel, {
       title: "Tổng hợp nợ quá hạn (A1–A4) theo team · " + fmtKyLabel(data.meta.ky),
-      subtitle: "Triệu đồng · cột theo BU → team của sale trong dm_ps · chỉ A2–A4 bắt buộc giải trình (theo KH × ngành) · bấm tên KH để mở giải trình · bấm dòng nhóm để thu gọn",
+      subtitle: "Triệu đồng · cột theo BU → team của sale trong dm_ps · chỉ A2–A4 bắt buộc giải trình (theo KH × BU) · bấm tên KH để mở giải trình · bấm dòng nhóm để thu gọn",
       right: h("button", { type: "button", onClick: () => exportPivot(pv, data.meta.ky), className: UI.btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel"),
     },
       h("div", { className: "scroll-shadow max-h-[680px] overflow-auto" }, h("table", { className: T.table },
@@ -257,8 +257,8 @@
             h("tr", { className: T.headRow },
               h("th", { className: T.th(), rowSpan: 2 }, "Sale"),
               h("th", { className: T.th(true) + " border-l border-slate-200", colSpan: 5 }, "Công nợ"),
-              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: D.STATUS_LIST.length + 2 }, "Giải trình A2–A4 (số KH × ngành)"),
-              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: 2 }, "Hẹn thu kỳ trước (số KH × ngành)")),
+              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: D.STATUS_LIST.length + 2 }, "Giải trình A2–A4 (số KH × BU)"),
+              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: 2 }, "Hẹn thu kỳ trước (số KH × BU)")),
             h("tr", { className: T.headRow },
               ["Tổng dư nợ", "A1", "A2–A4", "+/- kỳ trước", "Thu trong tháng", "Phải GT", ...D.STATUS_LIST.map((st) => D.TRANG_THAI[st].label), "% xong", "Hẹn thu", "Đã có thu"]
                 .map((x, i, arr) => h("th", { key: x, className: T.th(true) + (i === 0 || i === 5 || i === arr.length - 2 ? " border-l border-slate-200" : "") }, x)))),

@@ -9,7 +9,7 @@
 
   function exportExcel(rows, ky) {
     const ws = XLSX.utils.json_to_sheet(rows.map((r) => ({
-      "Khách hàng": r.ten_kh, "Tên KH (kế toán)": r.ten_kh_goc, "Sale": r.ten_nv, "Ngành hàng": r.nganh_hang, "Tháng xuất": r.thang_xuat, "Chứng từ": r.chung_tu,
+      "Khách hàng": r.ten_kh, "Tên KH (kế toán)": r.ten_kh_goc, "Sale": r.ten_nv, "BU": UI.buName(r.nganh_hang), "Tháng xuất": r.thang_xuat, "Chứng từ": r.chung_tu,
       "Mã hàng": r.ma_hang, "Tên hàng": r.ten_hang, "ĐVT": r.dvt, "SL": r.sl, "Đơn giá vốn": r.don_gia, "Giá trị": r.gia_tri, "Ghi chú": r.ghi_chu,
     })));
     const wb = XLSX.utils.book_new();
@@ -47,7 +47,7 @@
       h(UI.Panel, { title: "Hàng vay / hàng gửi chưa xuất hóa đơn · " + fmtKyLabel(data.meta.ky), subtitle: "Triệu đồng · bấm vào dòng để xem chứng từ" },
         h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
           h("thead", null, h("tr", { className: T.headRow },
-            ["#", "Khách hàng", "Sale", "Tháng xuất", ...nganhs, "Tổng", "% tổng"].map((x, i) => h("th", { key: x + i, className: T.th(i >= 4) }, x)))),
+            ["#", "Khách hàng", "Sale", "Tháng xuất", ...nganhs.map(UI.buName), "Tổng", "% tổng"].map((x, i) => h("th", { key: x + i, className: T.th(i >= 4) }, x)))),
           h("tbody", null, list.flatMap((x, i) => {
             const out = [h("tr", { key: x.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(open === x.key ? null : x.key) },
               h("td", { className: T.td + " text-slate-400" }, (open === x.key ? "▾ " : "▸ ") + (i + 1)),
