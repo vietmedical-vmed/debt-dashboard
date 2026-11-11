@@ -14,14 +14,4 @@ window.DEBT_CONFIG = {
   // Nhóm nợ bắt buộc giải trình.
   NHOM_GIAI_TRINH: ["A2", "A3", "A4"],
 
-  // Danh sách nguyên nhân cho sale chọn. Sửa tại đây nếu cần thêm/bớt.
-  NGUYEN_NHAN: [
-    "Đã đủ hồ sơ, chờ BV thanh toán theo quy trình",
-    "Thiếu hồ sơ/chứng từ (BBBG, phiếu SDVT, ĐCCN, HĐ)",
-    "BV chưa có nguồn/ngân sách, chờ cấp vốn hoặc BHYT",
-    "Vướng thủ tục thầu/hợp đồng",
-    "Sai lệch số liệu, đang đối chiếu với BV",
-    "Chờ xuất hóa đơn điều chỉnh/thay thế",
-    "Khác",
-  ],
 };

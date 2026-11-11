@@ -4,8 +4,9 @@
 // Tài khoản demo (mật khẩu bất kỳ):
 //   admin        → admin (nạp file, cấu hình, duyệt tất cả)
 //   quanly       → manager (xem + duyệt tất cả)
-//   tn_thnk      → product_manager ngành Nội soi tiêu hao
-//   <tên không dấu, liền> của sale, ví dụ "nguyenthiduyen" → ps (sau khi nạp file, tự gắn)
+//   am_bac, am_nam → area_manager Miền Bắc / Miền Nam, mọi ngành (người giải trình)
+//   <tên không dấu, liền> của sale, ví dụ "nguyenthiduyen" → ps (chỉ xem KH của mình)
+// Danh mục PS (dm_ps) demo tự dựng khi nạp file: miền đoán theo cột Khu vực.
 (function () {
   if (!window.DEBT_CONFIG.DEMO) return;
   const DB_NAME = "debt-demo", KEY = "state";
@@ -46,39 +47,57 @@
   const USERS = {
     admin: { username: "admin", ho_ten: "Admin demo", role: "admin", bu: "all" },
     quanly: { username: "quanly", ho_ten: "Quản lý demo", role: "manager", bu: "all" },
-    tn_thnk: { username: "tn_thnk", ho_ten: "Trưởng ngành NSTH", role: "product_manager", bu: "thnk" },
+    am_bac: { username: "am_bac", ho_ten: "AM Miền Bắc (demo)", role: "area_manager", bu: "all", scope: "Miền Bắc" },
+    am_nam: { username: "am_nam", ho_ten: "AM Miền Nam (demo)", role: "area_manager", bu: "all", scope: "Miền Nam" },
   };
+  const dir = () => S.dm_ps || [];
   function userOf(username) {
     if (USERS[username]) return USERS[username];
+    const d = dir().find((x) => x.ps === username);
+    if (d) return { username, ho_ten: d.ten_ps, role: "ps", bu: d.bu_code, scope: d.ps };
     const m = Object.values(S.sale_map).find((x) => x.username === username);
     return m ? { username, ho_ten: m.ten_nv, role: "ps", bu: "" } : null;
+  }
+  const NAM_RE = /Nam|Hồ Chí Minh|Cần Thơ|Đồng Nai|Long An|Bình Dương|Tiền Giang|Kiên Giang|Gia Lai|Trà Vinh|Khánh Hòa|Lâm Đồng|Đắk Lắk/;
+  function buildDir(rows) {
+    const by = new Map();
+    for (const r of rows) {
+      const x = by.get(r.ten_nv) || { bu: {}, nam: 0, bac: 0 };
+      if (r.bu) x.bu[r.bu] = (x.bu[r.bu] || 0) + 1;
+      if (NAM_RE.test(r.khu_vuc || "")) x.nam++; else x.bac++;
+      by.set(r.ten_nv, x);
+    }
+    return [...by.entries()].map(([n, x]) => ({
+      ps: slug(n), ten_ps: n, bu_code: Object.entries(x.bu).sort((a, b) => b[1] - a[1])[0]?.[0] || null, area: x.nam > x.bac ? "Miền Nam" : "Miền Bắc",
+    }));
   }
 
   const err = (code) => { throw new Error(code); };
 
   // ── Quyền: giống debt-api ──
+  const norm = (s) => String(s ?? "").normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
   function perm(u) {
     const map = Object.values(S.sale_map);
     const role = u.role;
     const buList = String(u.bu || "").split(/[,;|]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    const keys = new Set([norm(u.scope), norm(u.username)].filter(Boolean));
     const p = {
-      role, all: role === "admin" || role === "manager", bu: null,
-      myNv: map.filter((m) => m.username === u.username).map((m) => m.ten_nv),
-      approveNv: map.filter((m) => m.nguoi_duyet === u.username).map((m) => m.ten_nv),
+      role, all: role === "admin" || role === "manager", bu: null, amNv: new Set(),
+      myNv: new Set([...map.filter((m) => m.username === u.username).map((m) => norm(m.ten_nv)),
+        ...dir().filter((d) => keys.has(norm(d.ps)) || norm(d.ten_ps) === norm(u.ho_ten)).map((d) => norm(d.ten_ps))]),
+      approveNv: new Set(map.filter((m) => m.nguoi_duyet === u.username).map((m) => norm(m.ten_nv))),
       canImport: role === "admin", approveAll: role === "admin" || role === "manager",
     };
-    if (role === "product_manager" || role === "area_manager") {
-      if (!buList.length || buList.includes("all")) p.all = true; else p.bu = buList;
+    if (role === "product_manager") { if (!buList.length || buList.includes("all")) p.all = true; else p.bu = buList; }
+    if (role === "area_manager") {
+      const mien = String(u.scope || "").split(",").map((x) => x.trim());
+      for (const d of dir()) if ((buList.includes("all") || buList.includes(d.bu_code)) && mien.includes(d.area)) p.amNv.add(norm(d.ten_ps));
     }
     return { p, map };
   }
-  const canSee = (p, r) => p.all || (p.bu && r.bu && p.bu.includes(r.bu)) || p.myNv.includes(r.ten_nv) || p.approveNv.includes(r.ten_nv);
-  function canApprove(p, map, nv, bus) {
-    if (p.approveAll || p.approveNv.includes(nv)) return true;
-    const m = map.find((x) => x.ten_nv === nv);
-    if ((p.role === "product_manager" || p.role === "area_manager") && !(m && m.nguoi_duyet)) return p.all || (!!p.bu && bus.some((b) => p.bu.includes(b)));
-    return false;
-  }
+  const canSee = (p, r) => { const n = norm(r.ten_nv); return p.all || (p.bu && r.bu && p.bu.includes(r.bu)) || p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n); };
+  const canEdit = (p, nv) => p.role === "admin" || p.amNv.has(norm(nv));
+  const canApprove = (p, nv) => p.approveAll || p.approveNv.has(norm(nv));
 
   function agg(rows) {
     const m = new Map();
@@ -108,7 +127,7 @@
 
     switch (action) {
       case "whoami":
-        return { ok: true, user: u, permission: { all: P.all, bu: P.bu, myNv: P.myNv, approveNv: P.approveNv, canImport: P.canImport, approveAll: P.approveAll } };
+        return { ok: true, user: u, permission: { all: P.all, bu: P.bu, giaiTrinh: P.amNv.size > 0 || P.role === "admin", canImport: P.canImport, approveAll: P.approveAll } };
       case "list_ky":
         return { ok: true, rows: Object.values(S.ky).filter((k) => k.import_id).sort((a, b) => b.ky.localeCompare(a.ky))
           .map((k) => (P.all ? k : { ...k, bien_dong: null, doi_chieu: null })) };
@@ -124,21 +143,21 @@
           agg: all.filter((r) => canSee(P, r)),
           hang_vay: (S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r)),
           thu_tien: (S.thu_tien[meta.import_id] || []).filter((r) => canSee(P, r)),
-          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && seeNv(g.ten_nv)).map((g) => ({ ...g, _can_approve: canApprove(P, map, g.ten_nv, [...(buByNv.get(g.ten_nv) || [])]) })),
-          can_edit_nv: P.role === "admin" ? null : P.myNv,
-          can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(P, map, nv, [...(buByNv.get(nv) || [])])),
+          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && seeNv(g.ten_nv)).map((g) => ({ ...g, _can_approve: canApprove(P, g.ten_nv) })),
+          can_edit_nv: P.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(P, nv)),
+          can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(P, nv)),
         };
       }
       case "get_kh": {
         const meta = kyRow(p.ky); if (!meta) err("not_found");
-        const hd = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.ten_nv === p.ten_nv && !r.loai_tru && canSee(P, r))
+        const hd = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.ten_nv === p.ten_nv && !r.loai_tru && NHOM.includes(r.nhom_no) && canSee(P, r))
           .sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
         const hist = S.giai_trinh.filter((g) => g.ma_kh === p.ma_kh && g.ten_nv === p.ten_nv).sort((a, b) => b.ky.localeCompare(a.ky));
         const ids = hist.map((h) => h.id);
         return { ok: true, hoa_don: hd, lich_su: hist, log: S.log.filter((l) => ids.includes(l.giai_trinh_id)).sort((a, b) => b.luc.localeCompare(a.luc)) };
       }
       case "save_gt": {
-        if (P.role !== "admin" && !P.myNv.includes(p.ten_nv)) err("forbidden");
+        if (!canEdit(P, p.ten_nv)) err("forbidden");
         const meta = kyRow(p.ky); if (!meta) err("not_found"); if (meta.khoa) err("ky_da_khoa");
         let cur = S.giai_trinh.find((g) => g.ky === p.ky && g.ma_kh === p.ma_kh && g.ten_nv === p.ten_nv);
         if (cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) err("da_gui_khong_sua");
@@ -147,13 +166,11 @@
         const rec = {
           ky: p.ky, ma_kh: p.ma_kh, ten_nv: p.ten_nv, ten_kh: f.ten_kh || (qh[0] && qh[0].ten_kh) || null,
           du_no_qua_han: qh.reduce((t, r) => t + r.con_no, 0),
-          nguyen_nhan: f.nguyen_nhan || null, chi_tiet: f.chi_tiet || null, ke_hoach: f.ke_hoach || null,
-          ngay_du_kien: f.ngay_du_kien || null, so_tien_du_kien: f.so_tien_du_kien === "" || f.so_tien_du_kien == null ? null : Number(f.so_tien_du_kien),
+          ke_hoach: f.ke_hoach || null, thang_du_kien: /^\d{4}-(0[1-9]|1[0-2])$/.test(f.thang_du_kien || "") ? f.thang_du_kien : null,
           trang_thai: p.submit ? "cho_duyet" : "nhap", nguoi_cap_nhat: u.username, cap_nhat_luc: now(),
         };
         if (p.submit) {
-          const miss = ["nguyen_nhan", "ke_hoach", "ngay_du_kien"].filter((k) => !rec[k]);
-          if (rec.nguyen_nhan === "Khác" && !rec.chi_tiet) miss.push("chi_tiet");
+          const miss = ["ke_hoach", "thang_du_kien"].filter((k) => !rec[k]);
           if (miss.length) err("thieu_thong_tin:" + miss.join(","));
           rec.nguoi_gui = u.username; rec.gui_luc = now();
         }
@@ -166,7 +183,7 @@
         const cur = S.giai_trinh.find((g) => g.id === Number(p.id)); if (!cur) err("not_found");
         const meta = kyRow(cur.ky); if (meta && meta.khoa) err("ky_da_khoa");
         const bus = [...new Set((S.cong_no[meta.import_id] || []).filter((r) => r.ten_nv === cur.ten_nv).map((r) => r.bu).filter(Boolean))];
-        if (!canApprove(P, map, cur.ten_nv, bus)) err("forbidden");
+        if (!canApprove(P, cur.ten_nv)) err("forbidden");
         const decision = p.decision === "duyet" ? "da_duyet" : p.decision === "tra_lai" ? "tra_lai" : null;
         if (!decision) err("bad_payload");
         if (!(cur.trang_thai === "cho_duyet" || (cur.trang_thai === "da_duyet" && decision === "tra_lai"))) err("trang_thai_khong_hop_le");
@@ -198,9 +215,9 @@
         const m = p.meta || {};
         S.ky[b.ky] = { ky: b.ky, ky_truoc: m.ky_truoc, ngay_bao_cao: m.ngay_bao_cao, han_giai_trinh: old ? old.han_giai_trinh : null, khoa: old ? old.khoa : false,
           import_id: b.id, bien_dong: m.bien_dong, doi_chieu: m.doi_chieu, imported_by: u.username, imported_at: now() };
-        // Demo: tự tạo tài khoản sale = tên không dấu.
-        const names = new Set([...S.cong_no[b.id], ...S.hang_vay[b.id]].map((r) => r.ten_nv));
-        for (const n of names) if (!S.sale_map[n]) S.sale_map[n] = { ten_nv: n, username: slug(n), nguoi_duyet: null };
+        // Demo: dựng danh mục PS (tài khoản sale = tên không dấu, miền đoán theo khu vực).
+        const known = new Set(dir().map((d) => d.ten_ps));
+        S.dm_ps = [...dir(), ...buildDir(S.cong_no[b.id].filter((r) => r.ky === b.ky && !known.has(r.ten_nv)))];
         await save(S);
         return { ok: true };
       }
@@ -220,9 +237,17 @@
         if (P.role !== "admin") err("forbidden");
         const latest = Object.values(S.ky).sort((a, b) => b.ky.localeCompare(a.ky))[0];
         const names = latest ? [...new Set([...(S.cong_no[latest.import_id] || []), ...(S.hang_vay[latest.import_id] || [])].map((r) => r.ten_nv))].sort() : [];
-        const users = [...Object.values(USERS), ...Object.values(S.sale_map).filter((m) => m.username).map((m) => ({ username: m.username, ho_va_ten: m.ten_nv, role: "ps" }))]
-          .map((x) => ({ username: x.username, ho_va_ten: x.ho_va_ten || x.ho_ten, role: x.role, bu: x.bu }));
-        return { ok: true, rows: Object.values(S.sale_map), users, ten_nv: names };
+        const all = [...Object.values(USERS), ...dir().map((d) => ({ username: d.ps, ho_ten: d.ten_ps, role: "ps", bu: d.bu_code, scope: d.ps }))];
+        const users = all.map((x) => ({ username: x.username, ho_va_ten: x.ho_ten, role: x.role, bu: x.bu }));
+        const auto = {};
+        for (const n of names) {
+          const d = dir().find((x) => norm(x.ten_ps) === norm(n));
+          if (!d) { auto[n] = null; continue; }
+          auto[n] = { area: d.area, bu: d.bu_code,
+            sale: all.filter((x) => x.role === "ps" && norm(x.scope) === norm(d.ps)).map((x) => x.username),
+            am: all.filter((x) => x.role === "area_manager" && perm(x).p.amNv.has(norm(n))).map((x) => x.username) };
+        }
+        return { ok: true, rows: Object.values(S.sale_map), users, ten_nv: names, auto };
       }
       case "save_sale_map": {
         if (P.role !== "admin") err("forbidden");

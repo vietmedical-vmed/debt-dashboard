@@ -8,16 +8,16 @@
 
   function build(data, f) {
     const khach = D.buildKhach(data, f);
-    const endKy = (() => { const [y, m] = data.meta.ky.split("-").map(Number); return new Date(y, m, 0).toISOString().slice(0, 10); })();
     const m = new Map();
     for (const k of khach) {
-      const s = m.get(k.ten_nv) || { nv: k.ten_nv, tong: 0, A1: 0, qh: 0, qhP: 0, thu: 0, need: 0, st: {}, camKet: 0, camKetThu: 0, soCamKet: 0 };
+      const s = m.get(k.ten_nv) || { nv: k.ten_nv, tong: 0, A1: 0, qh: 0, qhP: 0, thu: 0, need: 0, st: {}, camKet: 0, camKetThu: 0 };
       s.tong += k.tong; s.A1 += k.A1; s.qh += k.qua_han; s.qhP += k.prev_qua_han; s.thu += k.thu;
       if (k.can_gt) { s.need++; s.st[k.trang_thai] = (s.st[k.trang_thai] || 0) + 1; }
-      // Cam kết kỳ trước có hạn thu trong/trước kỳ này
+      // Giải trình kỳ trước hẹn thu trong/trước kỳ này: đếm số KH, và số KH đã có tiền về trong tháng
       const g = k.gt_prev;
-      if (g && g.ngay_du_kien && g.ngay_du_kien <= endKy && g.so_tien_du_kien) {
-        s.camKet += g.so_tien_du_kien; s.camKetThu += Math.min(k.thu, g.so_tien_du_kien); s.soCamKet++;
+      if (g && g.thang_du_kien && g.thang_du_kien <= data.meta.ky) {
+        s.camKet++;
+        if (k.thu > 0) s.camKetThu++;
       }
       m.set(k.ten_nv, s);
     }
@@ -48,11 +48,11 @@
         stCell(s, "chua", "text-red-600"), stCell(s, "nhap", "text-amber-700"), stCell(s, "tra_lai", "text-red-600"),
         stCell(s, "cho_duyet", "text-blue-700"), stCell(s, "da_duyet", "text-slate-800"),
         h("td", { className: T.num }, s.need ? fmtPct((s.st.da_duyet || 0) / s.need, 0) : "—"),
-        h("td", { className: T.num }, s.camKet ? fmtTr(s.camKet) : "—"),
-        h("td", { className: T.num }, s.camKet ? fmtPct(s.camKetThu / s.camKet, 0) : "—"));
+        h("td", { className: T.num }, s.camKet || "—"),
+        h("td", { className: T.num }, s.camKet ? s.camKetThu + " (" + fmtPct(s.camKetThu / s.camKet, 0) + ")" : "—"));
       return h(UI.Panel, {
         title: "Công nợ & giải trình theo sale · " + fmtKyLabel(data.meta.ky),
-        subtitle: "Triệu đồng · bấm vào sale để mở danh sách giải trình · Cam kết = số tiền dự kiến thu trong giải trình " + fmtKyLabel(data.meta.ky_truoc) + " có hạn đến hết " + fmtKyLabel(data.meta.ky),
+        subtitle: "Triệu đồng · bấm vào sale để mở danh sách giải trình · Hẹn thu = số KH mà giải trình " + fmtKyLabel(data.meta.ky_truoc) + " dự kiến thu trong hoặc trước " + fmtKyLabel(data.meta.ky) + "; Đã có thu = số KH đó có tiền về trong tháng",
       },
         h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
           h("thead", null,
@@ -60,9 +60,9 @@
               h("th", { className: T.th(), rowSpan: 2 }, "Sale"),
               h("th", { className: T.th(true) + " border-l border-slate-200", colSpan: 5 }, "Công nợ"),
               h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: 7 }, "Giải trình A2–A4 (số KH)"),
-              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: 2 }, "Cam kết kỳ trước")),
+              h("th", { className: "border-l border-slate-200 px-3 py-1 text-center font-semibold", colSpan: 2 }, "Hẹn thu kỳ trước (số KH)")),
             h("tr", { className: T.headRow },
-              ["Tổng dư nợ", "A1", "A2–A4", "+/- kỳ trước", "Thu trong tháng", "Phải GT", "Chưa", "Nháp", "Trả lại", "Chờ duyệt", "Đã duyệt", "% xong", "Số tiền", "% đã thu"]
+              ["Tổng dư nợ", "A1", "A2–A4", "+/- kỳ trước", "Thu trong tháng", "Phải GT", "Chưa", "Nháp", "Trả lại", "Chờ duyệt", "Đã duyệt", "% xong", "Hẹn thu", "Đã có thu"]
                 .map((x, i) => h("th", { key: x, className: T.th(true) + (i === 0 || i === 5 || i === 12 ? " border-l border-slate-200" : "") }, x)))),
           h("tbody", null, rows.map((s, i) => line(s, i)), rows.length > 1 && line(tot, 0, true)))));
     });

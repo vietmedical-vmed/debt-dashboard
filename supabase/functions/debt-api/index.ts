@@ -4,14 +4,14 @@
 // Deploy:
 //   supabase functions deploy debt-api --no-verify-jwt --project-ref nrfxymnfmjhbsgpipvkb
 //
-// Phân quyền (role lấy từ shared.users, nằm trong token):
-//   admin            : xem tất cả, nạp file, cấu hình, duyệt tất cả, sửa giải trình thay sale
+// Phân quyền (role lấy từ shared.users, nằm trong token). Tên NV trong file kế toán = shared.dm_ps.ten_ps.
+//   admin            : xem tất cả, nạp file, cấu hình, duyệt tất cả, sửa giải trình mọi KH
 //   manager          : xem tất cả, duyệt tất cả
-//   product_manager,
-//   area_manager     : xem theo ngành hàng (users.bu: chcs/thnk/cttm, "all" = tất cả);
-//                      duyệt sale mà mình là người duyệt (sale_map.nguoi_duyet), hoặc sale chưa gán người duyệt trong ngành mình
-//   ps (và role khác): chỉ xem + giải trình khách hàng của chính mình (sale_map.username = mình)
-// Ai được gán là người duyệt của một sale thì luôn xem được khách hàng của sale đó.
+//   area_manager     : NGƯỜI GIẢI TRÌNH CHÍNH — xem + giải trình KH của các PS mình phụ trách
+//                      (dm_ps cùng bu_code với users.bu, area thuộc users.scope / users.mien)
+//   product_manager  : xem theo ngành hàng (users.bu: chcs/thnk/cttm, "all" = tất cả)
+//   ps (và role khác): chỉ xem KH của mình — dm_ps.ps = users.scope (hoặc username), hoặc dm_ps.ten_ps = họ tên
+// sale_map (màn Quản trị) bổ sung: gắn tay tài khoản cho tên NV không có trong dm_ps; chỉ định người duyệt riêng.
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -63,9 +63,9 @@ type Perm = {
   role: string;
   all: boolean;               // xem tất cả
   bu: string[] | null;        // ngành hàng được xem (product_manager; null = không theo ngành)
-  amNv: Set<string>;          // area_manager: tên PS phụ trách (đã chuẩn hoá) theo shared.dm_ps
-  myNv: string[];             // tên NV trong file kế toán = chính mình
-  approveNv: string[];        // tên NV mình là người duyệt (gán cứng ở sale_map)
+  amNv: Set<string>;          // area_manager: tên PS phụ trách (chuẩn hoá) — xem + giải trình
+  myNv: Set<string>;          // tên NV = chính mình (dm_ps hoặc gắn tay ở sale_map) — chỉ xem
+  approveNv: Set<string>;     // tên NV mình là người duyệt (gán ở sale_map)
   canImport: boolean;
   approveAll: boolean;
   noAccess: boolean;
@@ -88,10 +88,23 @@ function mienOfManager(s: Session): string[] {
   return [...out];
 }
 
+type PsRow = { ps: string | null; ten_ps: string | null; bu_code: string | null; area: string | null };
+// Tài khoản ↔ PS: dm_ps.ps = users.scope (chuẩn sale-target) hoặc = username, hoặc dm_ps.ten_ps = họ tên.
+function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho_ten?: string | null }) {
+  const keys = new Set([normName(u.scope), normName(u.username)].filter(Boolean));
+  const hoTen = normName(u.ho_ten);
+  return dir.filter((p) => keys.has(normName(p.ps)) || (!!hoTen && normName(p.ten_ps) === hoTen));
+}
+
 async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[] }> {
-  const { data, error } = await db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet");
+  const [{ data, error }, { data: dirData, error: e2 }] = await Promise.all([
+    db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet"),
+    db.schema("shared").from("dm_ps").select("ps, ten_ps, bu_code, area"),
+  ]);
   if (error) throw new Error(error.message);
+  if (e2) throw new Error(e2.message);
   const map = (data ?? []) as SaleMap[];
+  const dir = (dirData ?? []) as PsRow[];
   const role = (s.role || "").toLowerCase();
   const me = s.username;
   const buList = String(s.bu || "").split(/[,;|]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
@@ -100,8 +113,11 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
     all: role === "admin" || role === "manager",
     bu: null,
     amNv: new Set(),
-    myNv: map.filter((m) => m.username === me).map((m) => m.ten_nv),
-    approveNv: map.filter((m) => m.nguoi_duyet === me).map((m) => m.ten_nv),
+    myNv: new Set([
+      ...map.filter((m) => m.username === me).map((m) => normName(m.ten_nv)),
+      ...psOfUser(dir, { username: me, scope: s.scope, ho_ten: s.ho_ten }).map((p) => normName(p.ten_ps)),
+    ].filter(Boolean)),
+    approveNv: new Set(map.filter((m) => m.nguoi_duyet === me).map((m) => normName(m.ten_nv))),
     canImport: role === "admin",
     approveAll: role === "admin" || role === "manager",
     noAccess: role === "purchasing",
@@ -111,11 +127,8 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
     else perm.bu = buList;
   }
   if (role === "area_manager") {
-    // PS phụ trách = shared.dm_ps cùng BU (bu_code) và thuộc miền phụ trách. Khớp tên PS (ten_ps) với tên NV trong file kế toán.
     const mien = mienOfManager(s);
-    const { data: ps, error: e2 } = await db.schema("shared").from("dm_ps").select("ten_ps, bu_code, area");
-    if (e2) throw new Error(e2.message);
-    for (const p of ps ?? []) {
+    for (const p of dir) {
       const buOk = buList.includes("all") || buList.includes(String(p.bu_code || "").toLowerCase());
       const mienOk = mien.includes(String(p.area || "").normalize("NFC").trim());
       if (buOk && mienOk && p.ten_ps) perm.amNv.add(normName(p.ten_ps));
@@ -128,18 +141,18 @@ function canSee(p: Perm, row: { bu?: string | null; ten_nv: string }) {
   if (p.noAccess) return false;
   if (p.all) return true;
   if (p.bu && row.bu && p.bu.includes(row.bu)) return true;
-  if (p.amNv.has(normName(row.ten_nv))) return true;
-  return p.myNv.includes(row.ten_nv) || p.approveNv.includes(row.ten_nv);
+  const n = normName(row.ten_nv);
+  return p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n);
 }
 
-function canApprove(p: Perm, map: SaleMap[], tenNv: string, buOfRow: string[]) {
-  if (p.approveAll) return true;
-  if (p.approveNv.includes(tenNv)) return true;
-  const m = map.find((x) => x.ten_nv === tenNv);
-  if (m && m.nguoi_duyet) return false; // đã gán người duyệt cụ thể
-  if (p.role === "area_manager") return p.amNv.has(normName(tenNv));
-  if (p.role === "product_manager") return p.all || (!!p.bu && buOfRow.some((b) => p.bu!.includes(b)));
-  return false;
+// Người giải trình: area_manager phụ trách PS đó; admin sửa được mọi KH.
+function canEdit(p: Perm, tenNv: string) {
+  return p.role === "admin" || p.amNv.has(normName(tenNv));
+}
+
+// Người duyệt: admin, manager, hoặc người được chỉ định ở sale_map.
+function canApprove(p: Perm, tenNv: string) {
+  return p.approveAll || p.approveNv.has(normName(tenNv));
 }
 
 // ─── Utils ─────────────────────────────────────────────────────────────
@@ -156,7 +169,6 @@ async function fetchAll(build: (from: number, to: number) => any): Promise<any[]
 const KY_RE = /^\d{4}-\d{2}$/;
 const needKy = (ky: unknown) => { if (typeof ky !== "string" || !KY_RE.test(ky)) throw new HttpError("bad_ky"); return ky; };
 const str = (v: unknown, max = 2000) => (v == null || v === "" ? null : String(v).slice(0, max));
-const numOrNull = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 const QUA_HAN = ["A2", "A3", "A4"];
 
@@ -178,7 +190,7 @@ const COLS: Record<string, string[]> = {
 
 // ─── Actions ───────────────────────────────────────────────────────────
 async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
-  const { perm, map } = await getPerm(db, s);
+  const { perm } = await getPerm(db, s);
   if (perm.noAccess) throw new HttpError("forbidden", 403);
   const D = () => db.schema("app_debt");
 
@@ -186,7 +198,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     case "whoami":
       return {
         user: { username: s.username, ho_ten: s.ho_ten, role: s.role, bu: s.bu, mien: s.mien },
-        permission: { all: perm.all, bu: perm.bu, myNv: perm.myNv, approveNv: perm.approveNv, canImport: perm.canImport, approveAll: perm.approveAll },
+        permission: { all: perm.all, bu: perm.bu, giaiTrinh: perm.amNv.size > 0 || perm.role === "admin", canImport: perm.canImport, approveAll: perm.approveAll },
       };
 
     case "list_ky": {
@@ -222,10 +234,11 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         hang_vay: hv.filter((r) => canSee(perm, r)),
         thu_tien: tt.filter((r) => canSee(perm, r)),
         giai_trinh: gt.filter((r) => seeNv(r.ten_nv)).map((r) => ({
-          ...r, _can_approve: canApprove(perm, map, r.ten_nv, [...(buByNv.get(r.ten_nv) ?? [])]),
+          ...r, _can_approve: canApprove(perm, r.ten_nv),
         })),
-        can_edit_nv: perm.role === "admin" ? null : perm.myNv,
-        can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(perm, map, nv, [...(buByNv.get(nv) ?? [])])),
+        // null = sửa được tất cả (admin)
+        can_edit_nv: perm.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(perm, nv)),
+        can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(perm, nv)),
       };
     }
 
@@ -237,7 +250,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       if (!meta?.import_id) throw new HttpError("not_found", 404);
       const rows = await fetchAll((a, b) => D().from("cong_no")
         .select("ky, so_hd, ngay_hd, ngay_den_han, so_ngay_qua_han, nhom_no, nganh_hang, bu, gia_tri_hd, da_thanh_toan, con_no, so_hop_dong, bbbg, hop_dong_ban, khong_chung_tu, ghi_chu, note")
-        .eq("import_id", meta.import_id).eq("ky", ky).eq("ma_kh", ma).eq("ten_nv", nv).eq("loai_tru", false)
+        .eq("import_id", meta.import_id).eq("ky", ky).eq("ma_kh", ma).eq("ten_nv", nv).eq("loai_tru", false).in("nhom_no", QUA_HAN)
         .order("so_ngay_qua_han", { ascending: false }).order("id").range(a, b));
       const visible = rows.filter((r) => canSee(perm, { ...r, ten_nv: nv }));
       if (!visible.length && !canSee(perm, { ten_nv: nv, bu: null })) throw new HttpError("forbidden", 403);
@@ -250,12 +263,12 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       return { hoa_don: visible, lich_su: hist ?? [], log: logs ?? [] };
     }
 
-    // Sale lưu nháp hoặc gửi duyệt.
+    // Area manager (hoặc admin) lưu nháp / gửi duyệt.
     case "save_gt": {
       const ky = needKy(p.ky);
       const ma = String(p.ma_kh || ""), nv = String(p.ten_nv || "");
       if (!ma || !nv) throw new HttpError("bad_payload");
-      if (perm.role !== "admin" && !perm.myNv.includes(nv)) throw new HttpError("forbidden", 403);
+      if (!canEdit(perm, nv)) throw new HttpError("forbidden", 403);
       const meta = await getKyRow(db, ky);
       if (!meta?.import_id) throw new HttpError("not_found", 404);
       if (meta.khoa) throw new HttpError("ky_da_khoa");
@@ -273,18 +286,14 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         ky, ma_kh: ma, ten_nv: nv,
         ten_kh: str(f.ten_kh, 300) ?? qh[0]?.ten_kh ?? cur?.ten_kh ?? null,
         du_no_qua_han: duNo,
-        nguyen_nhan: str(f.nguyen_nhan, 200),
-        chi_tiet: str(f.chi_tiet),
         ke_hoach: str(f.ke_hoach),
-        ngay_du_kien: dateOrNull(f.ngay_du_kien),
-        so_tien_du_kien: numOrNull(f.so_tien_du_kien),
+        thang_du_kien: KY_RE.test(String(f.thang_du_kien || "")) && Number(String(f.thang_du_kien).slice(5)) >= 1 && Number(String(f.thang_du_kien).slice(5)) <= 12 ? String(f.thang_du_kien) : null,
         trang_thai: submit ? "cho_duyet" : "nhap",
         nguoi_cap_nhat: s.username,
         cap_nhat_luc: new Date().toISOString(),
       };
       if (submit) {
-        const missing = ["nguyen_nhan", "ke_hoach", "ngay_du_kien"].filter((k) => !rec[k]);
-        if (rec.nguyen_nhan === "Khác" && !rec.chi_tiet) missing.push("chi_tiet");
+        const missing = ["ke_hoach", "thang_du_kien"].filter((k) => !rec[k]);
         if (missing.length) throw new HttpError("thieu_thong_tin:" + missing.join(","));
         rec.nguoi_gui = s.username;
         rec.gui_luc = new Date().toISOString();
@@ -305,9 +314,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       if (!cur) throw new HttpError("not_found", 404);
       const meta = await getKyRow(db, cur.ky);
       if (meta?.khoa) throw new HttpError("ky_da_khoa");
-      const { data: buRows } = await D().from("v_cong_no_agg").select("bu").eq("import_id", meta?.import_id).eq("ten_nv", cur.ten_nv).limit(50);
-      const bus = [...new Set((buRows ?? []).map((r: any) => r.bu).filter(Boolean))] as string[];
-      if (!canApprove(perm, map, cur.ten_nv, bus)) throw new HttpError("forbidden", 403);
+      if (!canApprove(perm, cur.ten_nv)) throw new HttpError("forbidden", 403);
       const ok = cur.trang_thai === "cho_duyet" || (cur.trang_thai === "da_duyet" && decision === "tra_lai");
       if (!ok) throw new HttpError("trang_thai_khong_hop_le");
       const nhanXet = str(p.nhan_xet);
@@ -389,19 +396,49 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     // ── Gắn tên NV ↔ tài khoản (admin) ──
     case "list_sale_map": {
       if (perm.role !== "admin") throw new HttpError("forbidden", 403);
-      const [{ data: rows }, { data: users }, { data: latest }, { data: psDir }] = await Promise.all([
+      const [{ data: rows }, { data: usersRaw }, { data: latest }, { data: psDir }] = await Promise.all([
         D().from("sale_map").select("*").order("ten_nv"),
-        db.schema("shared").from("users").select("username, ho_va_ten, role, bu, active").order("username"),
+        db.schema("shared").from("users").select("username, ho_va_ten, role, bu, mien, scope, active").order("username"),
         D().from("ky_bao_cao").select("import_id").not("import_id", "is", null).order("ky", { ascending: false }).limit(1),
-        db.schema("shared").from("dm_ps").select("ps, ten_ps"),
+        db.schema("shared").from("dm_ps").select("ps, ten_ps, bu_code, area"),
       ]);
+      const users = (usersRaw ?? []).filter((u: any) => u.active !== false);
+      const dir = (psDir ?? []) as PsRow[];
+      // Tự gắn theo dm_ps: tài khoản sale (ps) và area_manager phụ trách của từng tên NV.
+      const auto: Record<string, { sale: string[]; am: string[]; area: string | null; bu: string | null }> = {};
+      for (const p0 of dir) {
+        if (!p0.ten_ps) continue;
+        const k = normName(p0.ten_ps);
+        auto[k] = auto[k] || { sale: [], am: [], area: p0.area, bu: p0.bu_code };
+      }
+      for (const u of users as any[]) {
+        const role = String(u.role || "").toLowerCase();
+        if (role === "area_manager") {
+          const mien = mienOfManager({ scope: u.scope, mien: u.mien } as Session);
+          const bus = String(u.bu || "").split(/[,;|]/).map((x: string) => x.trim().toLowerCase()).filter(Boolean);
+          for (const p0 of dir) {
+            if (!p0.ten_ps) continue;
+            const buOk = bus.includes("all") || bus.includes(String(p0.bu_code || "").toLowerCase());
+            if (buOk && mien.includes(String(p0.area || "").normalize("NFC").trim())) auto[normName(p0.ten_ps)].am.push(u.username);
+          }
+        } else {
+          for (const p0 of psOfUser(dir, { username: u.username, scope: u.scope, ho_ten: u.ho_va_ten })) {
+            if (p0.ten_ps) auto[normName(p0.ten_ps)].sale.push(u.username);
+          }
+        }
+      }
       let names: string[] = [];
       if (latest?.[0]?.import_id) {
         const agg = await fetchAll((a, b) => D().from("v_cong_no_agg").select("ten_nv").eq("import_id", latest[0].import_id).order("ten_nv").range(a, b));
         const hv = await fetchAll((a, b) => D().from("hang_vay").select("ten_nv").eq("import_id", latest[0].import_id).order("id").range(a, b));
         names = [...new Set([...agg, ...hv].map((r) => r.ten_nv))].sort();
       }
-      return { rows: rows ?? [], users: (users ?? []).filter((u: any) => u.active !== false), ten_nv: names, ps_dir: psDir ?? [] };
+      return {
+        rows: rows ?? [],
+        users: users.map((u: any) => ({ username: u.username, ho_va_ten: u.ho_va_ten, role: u.role, bu: u.bu })),
+        ten_nv: names,
+        auto: Object.fromEntries(names.map((n) => [n, auto[normName(n)] ?? null])),
+      };
     }
     case "save_sale_map": {
       if (perm.role !== "admin") throw new HttpError("forbidden", 403);

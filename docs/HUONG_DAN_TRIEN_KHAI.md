@@ -4,7 +4,7 @@
 
 ### Bước 1 — Tạo schema trên Supabase
 1. Mở Supabase project `nrfxymnfmjhbsgpipvkb` → **SQL Editor**.
-2. Dán và chạy toàn bộ [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql).
+2. Dán và chạy lần lượt [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql), [sql/02_thang_du_kien.sql](../sql/02_thang_du_kien.sql).
 3. Chạy câu kiểm tra ở cuối file. Cả 3 cột phải là `false` (anon không đọc được dữ liệu công nợ).
 4. **Settings → API → Exposed schemas**: thêm `app_debt`, bấm Save.
 
@@ -27,16 +27,18 @@ Thiếu `--no-verify-jwt` thì đăng nhập được nhưng dữ liệu trống
 3. Repo → Settings → Pages → Source: **GitHub Actions**.
 4. File Excel thật đã bị chặn bởi `.gitignore`; không commit dữ liệu công nợ vào repo.
 
-### Bước 4 — Tài khoản
-1. Sale nào chưa có tài khoản trong `shared.users` thì tạo thêm (role `ps`, `bu` theo ngành, `ho_va_ten` đúng như tên trong file kế toán để tự khớp).
-2. Trưởng ngành: role `product_manager`, `bu` = `chcs` / `thnk` / `cttm`.
-3. Kế toán cần xem: role `manager` (chỉ xem + duyệt) — hoặc không cần tài khoản nếu chỉ gửi file.
+### Bước 4 — Tài khoản & danh mục PS
+Quyền đi theo `shared.dm_ps` (dùng chung với sale-target):
+1. Mỗi sale trong file kế toán phải có dòng `dm_ps` với `ten_ps` đúng như tên trong file, `bu_code`, `area` (Miền Bắc/Trung/Nam).
+2. Tài khoản sale (role `ps`): `users.scope` = `dm_ps.ps` → sale xem KH của mình.
+3. Area manager (role `area_manager`): `users.bu` = BU (chcs/thnk/cttm, hoặc `all`), `users.scope` = miền phụ trách ("Miền Bắc, Miền Trung") → giải trình cho mọi PS cùng BU + miền.
+4. Người duyệt: tài khoản `manager` (hoặc admin). Muốn chỉ định riêng cho một sale: màn Quản trị → cột "Người duyệt riêng".
 
 ### Bước 5 — Nạp kỳ đầu tiên
 1. Đăng nhập admin → tab **Quản trị** → **Chọn file…** → chọn `KNK_Báo cáo công nợ T10.2026.xlsb`.
 2. Kiểm bảng đối chiếu: mọi dòng phải "Khớp". Nếu "Lệch", hỏi lại kế toán trước khi nạp.
 3. Bấm **Nạp lên hệ thống** (khoảng 15 lần gửi, dưới 1 phút).
-4. Mục **Gắn sale ↔ tài khoản**: bấm **Tự khớp theo họ tên**, sửa các dòng còn trống, chọn **Người duyệt** nếu muốn chỉ định riêng, bấm **Lưu**.
+4. Mục **Phân quyền theo danh mục PS**: kiểm dòng đỏ "Không có trong dm_ps" và "Chưa có area manager" — bổ sung `dm_ps` / `shared.users`, hoặc gắn tay.
 5. Mục **Kỳ báo cáo**: đặt **Hạn giải trình**.
 
 ## B. Quy trình hằng tháng
@@ -44,15 +46,14 @@ Thiếu `--no-verify-jwt` thì đăng nhập được nhưng dữ liệu trống
 | Ngày | Ai | Việc |
 |---|---|---|
 | Kế toán gửi file | Admin | Quản trị → nạp file → kiểm đối chiếu → nạp. Đặt hạn giải trình (ví dụ +7 ngày). Gắn tài khoản cho sale mới nếu có. |
-| Ngay sau đó | Admin | Gửi link app cho sale (email/Zalo nhóm). |
-| Trong hạn | Sale | Tab **Giải trình** → bấm từng KH "Chưa giải trình" → chọn nguyên nhân, kế hoạch, ngày + số tiền dự kiến thu → **Gửi duyệt**. Từ kỳ thứ 2, form tự điền sẵn từ giải trình kỳ trước. |
+| Ngay sau đó | Admin | Gửi link app cho area manager và sale (email/Zalo nhóm). |
+| Trong hạn | Area manager | Tab **Giải trình** → bấm từng KH "Chưa giải trình" → ghi giải trình & kế hoạch xử lý, chọn tháng dự kiến thu (yyyy-mm) → **Gửi duyệt**. Từ kỳ thứ 2, nội dung tự điền sẵn từ kỳ trước, tháng phải chọn lại. Sale vào xem phần của mình. |
 | Trong hạn | Quản lý | Tab **Giải trình** → lọc **Chờ duyệt** → **Duyệt** hoặc **Trả lại** kèm nhận xét. Sale sửa và gửi lại. |
-| Hết hạn | Quản lý | Tab **Theo sale**: ai chưa xong, cam kết kỳ trước đã thu bao nhiêu %. **Xuất Excel** danh sách giải trình để báo cáo. |
+| Hết hạn | Quản lý | Tab **Theo sale**: ai chưa xong, bao nhiêu KH hẹn thu kỳ trước đã có tiền về. **Xuất Excel** danh sách giải trình để báo cáo. |
 | Chốt | Admin | Quản trị → tick **Khoá** kỳ. Không ai sửa/duyệt được nữa. |
 
 ## C. Thay đổi thường gặp
 
-- **Thêm/bớt nguyên nhân**: sửa `NGUYEN_NHAN` trong `dashboard/assets/js/config.js`.
 - **Bắt buộc giải trình cả A1**: sửa `NHOM_GIAI_TRINH` trong `config.js` **và** hằng `QUA_HAN` trong `supabase/functions/debt-api/index.ts`, rồi deploy lại `debt-api`.
 - Mỗi lần sửa file JS: đổi `?v=` trong `dashboard/index.html` để trình duyệt không dùng bản cũ.
 - Sửa `supabase/functions/*`: phải deploy tay (push GitHub không deploy edge function).
@@ -73,4 +74,4 @@ Các tên bắt buộc giữ nguyên:
 - "Dư nợ chưa có BBBG/ĐCCN" = dòng có cột *CN nhóm B* = x, **chưa gồm CTTM** (giống báo cáo kế toán).
 - Dòng *Không lên báo cáo công nợ* = x bị loại khỏi mọi số.
 - "Thu trong tháng" = tổng sheet *Data thu tiền*, phân loại "Thanh toán", tháng thanh toán = kỳ báo cáo.
-- "Cam kết kỳ trước" = số tiền dự kiến thu trong giải trình kỳ trước, có ngày dự kiến ≤ cuối kỳ này; "% đã thu" so với thực thu trong tháng của chính KH đó.
+- "Hẹn thu kỳ trước" = số KH mà giải trình kỳ trước có tháng dự kiến thu ≤ kỳ này; "Đã có thu" = số KH đó có tiền về trong tháng.

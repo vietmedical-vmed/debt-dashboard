@@ -25,7 +25,8 @@
     ps: { label: "Sale", cls: "bg-slate-50 text-slate-600 border-slate-200" },
   };
   const initials = (u) => {
-    const parts = String(u.ho_ten || u.username || "CN").trim().split(/\s+/);
+    const parts = String(u.ho_ten || u.username || "CN").trim().split(/\s+/).filter((w) => /^\p{L}/u.test(w));
+    if (!parts.length) return "CN";
     return (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2)).toUpperCase();
   };
 
@@ -104,7 +105,7 @@
     if (checking) return h("div", { className: "flex min-h-screen items-center justify-center text-sm text-slate-500" }, "Đang kiểm tra phiên đăng nhập…");
     if (!user) return h(React.Fragment, null,
       DEMO && h("div", { className: "fixed left-0 right-0 top-0 z-50 bg-amber-400 px-4 py-1 text-center text-[12px] font-semibold text-amber-950" },
-        "DEMO — đăng nhập: admin / quanly / tn_thnk, hoặc tên sale viết liền không dấu (vd nguyenthiduyen) sau khi admin nạp file. Mật khẩu bất kỳ."),
+        "DEMO — đăng nhập: admin / quanly / am_bac / am_nam (area manager giải trình), hoặc tên sale viết liền không dấu (vd nguyenthiduyen, chỉ xem) sau khi admin nạp file. Mật khẩu bất kỳ."),
       h(LoginGate, { onAuth: setUser }));
     return h(Shell, { user, onLogout });
   }

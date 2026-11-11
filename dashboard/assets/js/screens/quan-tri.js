@@ -139,57 +139,57 @@
     const [msg, setMsg] = useState(null);
     const load = () => api("list_sale_map").then((r) => setSt({ ...r, loading: false })).catch((e) => setSt({ loading: false, error: errorText(e.message) }));
     useEffect(() => { load(); }, [nonce]);
-    if (st.loading) return h(UI.Panel, { title: "3. Gắn sale ↔ tài khoản" }, h(UI.LoadingBlock, null));
-    if (st.error) return h(UI.Panel, { title: "3. Gắn sale ↔ tài khoản" }, h("div", { className: "p-4" }, h(UI.ErrorBox, null, st.error)));
+    if (st.loading) return h(UI.Panel, { title: "3. Phân quyền theo danh mục PS" }, h(UI.LoadingBlock, null));
+    if (st.error) return h(UI.Panel, { title: "3. Phân quyền theo danh mục PS" }, h("div", { className: "p-4" }, h(UI.ErrorBox, null, st.error)));
 
     const byNv = new Map(st.rows.map((r) => [r.ten_nv, r]));
     const names = [...new Set([...st.ten_nv, ...st.rows.map((r) => r.ten_nv)])].sort((a, b) => a.localeCompare(b, "vi"));
     const val = (nv, k) => (edits[nv] && k in edits[nv] ? edits[nv][k] : (byNv.get(nv) || {})[k] || "");
     const setVal = (nv, k, v) => setEdits((e) => ({ ...e, [nv]: { ...(e[nv] || {}), [k]: v } }));
     const users = st.users.slice().sort((a, b) => (a.ho_va_ten || a.username).localeCompare(b.ho_va_ten || b.username, "vi"));
-    const approvers = users.filter((u) => ["admin", "manager", "product_manager", "area_manager"].includes(String(u.role).toLowerCase()));
+    const approvers = users.filter((u) => ["admin", "manager"].includes(String(u.role).toLowerCase()));
     const opt = (u) => h("option", { key: u.username, value: u.username }, (u.ho_va_ten || u.username) + " (" + u.username + " · " + u.role + ")");
+    const nameOf = (un) => { const u = users.find((x) => x.username === un); return u ? (u.ho_va_ten || un) : un; };
+    const auto = st.auto || {};
     const dirty = Object.keys(edits).length;
-    const unmapped = names.filter((n) => !val(n, "username")).length;
+    const noPs = names.filter((n) => !auto[n]).length;
+    const noAm = names.filter((n) => auto[n] && !auto[n].am.length).length;
 
-    // Gợi ý: khớp tên sale với họ tên tài khoản (bỏ dấu, không phân biệt hoa thường);
-    // không được thì qua danh mục PS (dm_ps: ten_ps = tên trong file, ps = họ tên/tài khoản).
-    const autoMatch = () => {
-      const key = (s) => UI.deaccent(s || "").replace(/\s+/g, " ").trim();
-      const next = { ...edits };
-      for (const n of names) {
-        if (val(n, "username")) continue;
-        const ps = (st.ps_dir || []).find((p) => key(p.ten_ps) === key(n));
-        const u = users.find((x) => key(x.ho_va_ten) === key(n))
-          || (ps && users.find((x) => key(x.ho_va_ten) === key(ps.ps) || key(x.username) === key(ps.ps)));
-        if (u) next[n] = { ...(next[n] || {}), username: u.username };
-      }
-      setEdits(next);
-    };
     const save = async () => {
       setMsg(null);
       const rows = Object.keys(edits).map((nv) => ({ ten_nv: nv, username: val(nv, "username") || null, nguoi_duyet: val(nv, "nguoi_duyet") || null, ghi_chu: val(nv, "ghi_chu") || null }));
       try { await api("save_sale_map", { rows }); setEdits({}); D.invalidate(); await load(); setMsg({ ok: true, text: "Đã lưu " + rows.length + " dòng" }); }
       catch (e) { setMsg({ ok: false, text: errorText(e.message) }); }
     };
+    const list = (arr, empty, tone) => arr && arr.length
+      ? h("div", { className: "flex flex-wrap gap-1" }, arr.map((un) => h(UI.Badge, { key: un, tone: tone, title: un }, nameOf(un))))
+      : h("span", { className: "text-[12px] " + (empty.warn ? "text-red-600" : "text-slate-400") }, empty.text);
 
     return h(UI.Panel, {
-      title: "3. Gắn sale ↔ tài khoản & người duyệt",
-      subtitle: names.length + " tên NV trong file kế toán · " + unmapped + " chưa gắn tài khoản (sale chưa gắn sẽ không thấy dữ liệu của mình)",
-      right: h("div", { className: "flex gap-2" },
-        h("button", { type: "button", onClick: autoMatch, className: btn.secondary }, "Tự khớp theo họ tên"),
-        h("button", { type: "button", disabled: !dirty, onClick: save, className: btn.primary }, "Lưu" + (dirty ? " (" + dirty + ")" : ""))),
+      title: "3. Phân quyền theo danh mục PS (shared.dm_ps)",
+      subtitle: names.length + " tên NV trong file kế toán · tự gắn theo dm_ps.ten_ps · " + noPs + " tên không có trong dm_ps · " + noAm + " tên chưa có area manager phụ trách",
+      right: h("button", { type: "button", disabled: !dirty, onClick: save, className: btn.primary }, "Lưu" + (dirty ? " (" + dirty + ")" : "")),
     },
       msg && h("div", { className: "px-4 pt-3" }, msg.ok ? h("span", { className: "text-[13px] text-green-700" }, msg.text) : h(UI.ErrorBox, null, msg.text)),
+      h("div", { className: "px-4 pt-3 text-[12px] text-slate-500" },
+        "Sale xem KH của mình qua tài khoản có users.scope (hoặc username) = dm_ps.ps. Area manager cùng BU + miền với PS là người giải trình. ",
+        "Muốn đổi: sửa dm_ps / shared.users. Cột \"Gắn tay\" chỉ dùng cho tên không có trong dm_ps (admin vẫn giải trình thay được)."),
       h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
-        h("thead", null, h("tr", { className: T.headRow }, ["Tên NV (file kế toán)", "Tài khoản của sale", "Người duyệt", "Ghi chú"].map((x) => h("th", { key: x, className: T.th() }, x)))),
-        h("tbody", null, names.map((n, i) => h("tr", { key: n, className: T.row(i) + (edits[n] ? " !bg-amber-50" : "") },
-          h("td", { className: T.td + " whitespace-nowrap font-medium" }, n, !st.ten_nv.includes(n) && h("span", { className: "ml-1 text-[11px] text-slate-400" }, "(không có trong kỳ mới nhất)")),
-          h("td", { className: T.td }, h("select", { value: val(n, "username"), onChange: (e) => setVal(n, "username", e.target.value), className: UI.input + " min-w-[260px]" },
-            h("option", { value: "" }, "— chưa gắn —"), users.map(opt))),
-          h("td", { className: T.td }, h("select", { value: val(n, "nguoi_duyet"), onChange: (e) => setVal(n, "nguoi_duyet", e.target.value), className: UI.input + " min-w-[260px]" },
-            h("option", { value: "" }, "— theo phân quyền —"), approvers.map(opt))),
-          h("td", { className: T.td }, h("input", { value: val(n, "ghi_chu"), onChange: (e) => setVal(n, "ghi_chu", e.target.value), className: UI.input + " min-w-[160px]" }))))))));
+        h("thead", null, h("tr", { className: T.headRow },
+          ["Tên NV (file kế toán)", "Miền · BU (dm_ps)", "Tài khoản sale (xem)", "Area manager (giải trình)", "Gắn tay tài khoản xem", "Người duyệt riêng", "Ghi chú"].map((x) => h("th", { key: x, className: T.th() }, x)))),
+        h("tbody", null, names.map((n, i) => {
+          const a = auto[n];
+          return h("tr", { key: n, className: T.row(i) + (edits[n] ? " !bg-amber-50" : "") },
+            h("td", { className: T.td + " whitespace-nowrap font-medium" }, n, !st.ten_nv.includes(n) && h("span", { className: "ml-1 text-[11px] text-slate-400" }, "(không có trong kỳ mới nhất)")),
+            h("td", { className: T.td + " whitespace-nowrap text-[12px] text-slate-500" }, a ? (a.area || "—") + " · " + (a.bu || "—") : h(UI.Badge, { tone: "red" }, "Không có trong dm_ps")),
+            h("td", { className: T.td }, list(a && a.sale, { text: "—" }, "grey")),
+            h("td", { className: T.td }, list(a && a.am, { text: "Chưa có — admin giải trình", warn: true }, "blue")),
+            h("td", { className: T.td }, h("select", { value: val(n, "username"), onChange: (e) => setVal(n, "username", e.target.value), className: UI.input + " min-w-[200px]" },
+              h("option", { value: "" }, "—"), users.map(opt))),
+            h("td", { className: T.td }, h("select", { value: val(n, "nguoi_duyet"), onChange: (e) => setVal(n, "nguoi_duyet", e.target.value), className: UI.input + " min-w-[200px]" },
+              h("option", { value: "" }, "— admin / manager —"), [...approvers, ...users.filter((u) => !approvers.includes(u) && String(u.role).toLowerCase() !== "ps")].map(opt))),
+            h("td", { className: T.td }, h("input", { value: val(n, "ghi_chu"), onChange: (e) => setVal(n, "ghi_chu", e.target.value), className: UI.input + " min-w-[140px]" })));
+        })))));
   }
 
   function QuanTri({ user }) {

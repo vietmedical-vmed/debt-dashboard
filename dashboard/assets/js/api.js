@@ -54,7 +54,7 @@
   }
 
   // Dịch mã lỗi từ máy chủ sang tiếng Việt.
-  const FIELD = { nguyen_nhan: "nguyên nhân", ke_hoach: "kế hoạch xử lý", ngay_du_kien: "ngày dự kiến thu", chi_tiet: "diễn giải chi tiết", nhan_xet: "nhận xét" };
+  const FIELD = { ke_hoach: "giải trình & kế hoạch xử lý", thang_du_kien: "tháng dự kiến thu (yyyy-mm)", nhan_xet: "nhận xét" };
   function errorText(code) {
     const s = String(code || "");
     if (s.startsWith("thieu_thong_tin:")) return "Thiếu: " + s.split(":")[1].split(",").map((f) => FIELD[f] || f).join(", ");
