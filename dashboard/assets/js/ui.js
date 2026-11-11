@@ -229,7 +229,8 @@
   const T = {
     table: "w-full border-collapse text-[13px]",
     headRow: "bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500",
-    th: (right) => "px-3 py-2 font-semibold whitespace-nowrap " + (right ? "text-right" : "text-left"),
+    // Tên cột luôn căn giữa (số liệu trong ô vẫn căn phải theo T.num)
+    th: () => "px-3 py-2 text-center font-semibold whitespace-nowrap",
     row: (i) => (i % 2 ? "bg-slate-50/50" : "bg-white") + " hover:bg-blue-50/40",
     td: "px-3 py-2",
     num: "px-3 py-2 text-right tabular-nums",

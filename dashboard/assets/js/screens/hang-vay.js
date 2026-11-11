@@ -59,7 +59,7 @@
               h("td", { className: T.num }, fmtPct(tong ? x.tong / tong : null)))];
             if (open === x.key) out.push(h("tr", { key: x.key + "-d" }, h("td", { colSpan: 6 + nganhs.length, className: "bg-slate-50 px-6 py-2" },
               h("table", { className: "w-full text-[12px]" },
-                h("thead", null, h("tr", { className: "text-left text-slate-400" }, ["Chứng từ", "Tháng", "Mã hàng", "Tên hàng", "SL", "Giá trị (tr)", "Ghi chú"].map((c) => h("th", { key: c, className: "px-2 py-1 font-medium" }, c)))),
+                h("thead", null, h("tr", { className: "text-center text-slate-400" }, ["Chứng từ", "Tháng", "Mã hàng", "Tên hàng", "SL", "Giá trị (tr)", "Ghi chú"].map((c) => h("th", { key: c, className: "px-2 py-1 font-medium" }, c)))),
                 h("tbody", null, x.items.map((r, j) => h("tr", { key: j, className: "border-t border-slate-200" },
                   h("td", { className: "px-2 py-1" }, r.chung_tu), h("td", { className: "px-2 py-1" }, fmtKyLabel(r.thang_xuat)),
                   h("td", { className: "px-2 py-1" }, r.ma_hang), h("td", { className: "px-2 py-1" }, r.ten_hang),
