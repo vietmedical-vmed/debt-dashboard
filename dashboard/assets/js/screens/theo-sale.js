@@ -71,17 +71,21 @@
     // Giải trình theo cặp KH × ngành (đơn vị giải trình)
     const khMap = new Map(D.buildKhach(data, f).map((k) => [k.key, k]));
     const status = (ma, nganhSet) => {
-      const pairs = [...nganhSet].map((ng) => khMap.get(ma + SEP + ng)).filter(Boolean);
+      const pairs = [...nganhSet].map((ng) => khMap.get(ma + SEP + ng)).filter(Boolean)
+        .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi"));
       const need = pairs.filter((k) => k.can_gt);
       const withGt = pairs.filter((k) => k.gt && k.trang_thai !== "chua");
       const many = withGt.length > 1;
+      // Mỗi ngành phải giải trình (hoặc đã có giải trình) = 1 dòng trong ô Chi tiết / Tháng
+      const items = pairs.filter((k) => k.can_gt || (k.gt && k.trang_thai !== "chua"));
       return {
+        items,
         need: need.length,
         done: need.filter((k) => k.trang_thai === D.DONE).length,
         total: need.length,
         list: need.map((k) => ({ nganh: k.nganh_hang, st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
         chi_tiet: withGt.map((k) => (many ? k.nganh_hang + ": " : "") + (k.gt.ke_hoach || "")).join("\n"),
-        thang: [...new Set(withGt.map((k) => k.gt.thang_du_kien).filter(Boolean))].sort().join(", "),
+        thang: withGt.map((k) => (many ? k.nganh_hang + ": " : "") + (k.gt.thang_du_kien || "")).join("\n"),
       };
     };
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
@@ -93,7 +97,7 @@
     });
     const grand = {}; let grandTong = 0;
     for (const g of groupsOut) { for (const [k, v] of Object.entries(g.sub)) grand[k] = (grand[k] || 0) + v; grandTong += g.tong; }
-    return { cols: colList, bus, groups: groupsOut, grand, grandTong };
+    return { cols: colList, bus, groups: groupsOut, grand, grandTong, khMap };
   }
 
   // Ô "Giải trình": chỉ tính các cặp KH × ngành có nợ A2–A4; KH chỉ có A1 → "Không bắt buộc".
@@ -116,9 +120,39 @@
     XLSX.writeFile(wb, "Tong_hop_no_A1-A4_" + ky + ".xlsx");
   }
 
-  function Pivot({ data, f }) {
+  function Pivot({ data, f, patchGt, kyMeta }) {
     const [closed, setClosed] = useState({});
+    const [openKey, setOpenKey] = useState(null);
     const pv = buildPivot(data, f);
+    const canEditKey = (key) => data.can_edit_keys == null || (data.can_edit_keys || []).includes(key);
+    const locked = !!(kyMeta && kyMeta.khoa);
+    const sel = openKey && pv.khMap.get(openKey);
+    const Modal = window.DEBT_GT && window.DEBT_GT.KhachModal;
+    const many = (x) => x.gt.items.length > 1;
+    // Ô Chi tiết giải trình: mỗi ngành 1 dòng; chưa có → nút "Giải trình"
+    const DetailCell = ({ x }) => {
+      if (!x.gt.items.length) return h("span", { className: "text-slate-300" }, "—");
+      return h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map((k) => {
+        const has = k.gt && k.trang_thai !== "chua";
+        const label = many(x) && h("span", { className: "mr-1 font-semibold text-slate-500" }, k.nganh_hang + ":");
+        if (has) {
+          return h("button", { key: k.key, type: "button", onClick: () => setOpenKey(k.key), title: k.gt.ke_hoach,
+            className: "max-w-[420px] text-left hover:text-blue-700" },
+            h("span", { className: "line-clamp-3 whitespace-pre-wrap" }, label, k.gt.ke_hoach),
+            k.can_cap_nhat && h(UI.Badge, { tone: "amber" }, "Cần cập nhật"));
+        }
+        return h("div", { key: k.key, className: "flex items-center gap-1" }, label,
+          canEditKey(k.key) && !locked
+            ? h("button", { type: "button", onClick: () => setOpenKey(k.key),
+                className: "inline-flex items-center gap-1 rounded border border-blue-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-blue-700 hover:bg-blue-50" },
+                "+ Giải trình")
+            : h("span", { className: "text-red-600" }, "Chưa giải trình"));
+      }));
+    };
+    const ThangCell = ({ x }) => !x.gt.items.length ? h("span", { className: "text-slate-300" }, "—")
+      : h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map((k) => h("div", { key: k.key, className: "whitespace-nowrap" },
+          many(x) && h("span", { className: "mr-1 text-slate-400" }, k.nganh_hang + ":"),
+          k.gt && k.trang_thai !== "chua" && k.gt.thang_du_kien ? k.gt.thang_du_kien : h("span", { className: "text-slate-300" }, "—"))));
     if (!pv.groups.length) return null;
     const v = (n) => (n ? fmtTr(n, 1) : "");
     const GtCell = ({ gt }) => {
@@ -161,15 +195,16 @@
               pv.cols.map((c, j) => h("td", { key: c.key, className: T.num + border(j) }, v(x.cells[c.key]))),
               h("td", { className: T.num + " border-l border-slate-200 font-medium" }, v(x.tong)),
               h("td", { className: T.td + " whitespace-nowrap border-l border-slate-200 text-[12px]" }, h(GtCell, { gt: x.gt })),
-              h("td", { className: T.td + " border-l border-slate-200 text-[12px] text-slate-700" },
-                x.gt.chi_tiet ? h("div", { className: "line-clamp-3 max-w-[420px] whitespace-pre-wrap", title: x.gt.chi_tiet }, x.gt.chi_tiet) : h("span", { className: "text-slate-300" }, "—")),
-              h("td", { className: T.td + " whitespace-nowrap border-l border-slate-200 text-[12px]" }, x.gt.thang || h("span", { className: "text-slate-300" }, "—"))))];
+              h("td", { className: T.td + " border-l border-slate-200 text-[12px] text-slate-700" }, h(DetailCell, { x })),
+              h("td", { className: T.td + " border-l border-slate-200 text-[12px]" }, h(ThangCell, { x }))))];
           }),
           h("tr", { className: "border-t-2 border-slate-300 bg-slate-100 font-bold" },
             h("td", { className: T.td }, "Tổng cộng"),
             pv.cols.map((c, i) => h("td", { key: c.key, className: T.num + border(i) }, v(pv.grand[c.key]))),
             h("td", { className: T.num + " border-l border-slate-200" }, v(pv.grandTong)),
-            h("td", { className: T.td + " border-l border-slate-200", colSpan: 3 }))))));
+            h("td", { className: T.td + " border-l border-slate-200", colSpan: 3 }))))),
+      sel && Modal && h(Modal, { k: sel, data, kyMeta, onClose: () => setOpenKey(null), onSaved: patchGt,
+        canEdit: canEditKey(sel.key), canApprove: false }));
   }
 
   function TheoSale() {
@@ -220,7 +255,7 @@
 
   function TongHop({ user }) {
     if (!user || !["admin", "manager"].includes(user.role)) return h(UI.Empty, null, "Chỉ admin và manager xem được bảng tổng hợp.");
-    return h(D.KyScreen, null, ({ data, f }) => h(Pivot, { data, f }) || h(UI.Empty, null, "Không có nợ quá hạn A1–A4 trong phạm vi lọc."));
+    return h(D.KyScreen, null, ({ data, f, patchGt, kyMeta }) => h(Pivot, { data, f, patchGt, kyMeta }));
   }
   R.register("/tong-hop", TongHop);
 })();

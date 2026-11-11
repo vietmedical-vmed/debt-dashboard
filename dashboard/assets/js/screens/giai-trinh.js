@@ -249,4 +249,5 @@
   }
 
   R.register("/giai-trinh", GiaiTrinh);
+  window.DEBT_GT = { KhachModal }; // bảng Tổng hợp A1–A4 mở popup giải trình trực tiếp
 })();
