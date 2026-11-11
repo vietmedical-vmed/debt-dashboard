@@ -140,17 +140,17 @@
     return m;
   }
 
-  // Bảng KH × sale của kỳ: số dư theo nhóm, quá hạn A2–A4, so kỳ trước, thu trong tháng, giải trình.
+  // Bảng KH × ngành hàng của kỳ (đơn vị giải trình): số dư theo nhóm, A2–A4, so kỳ trước, thu trong tháng, giải trình.
   function buildKhach(data, f) {
     const ky = data.meta.ky, kyTruoc = data.meta.ky_truoc;
     const rows = applyFilter(data.agg, f);
-    const key = (r) => r.ma_kh + "\u0001" + r.ten_nv;
+    const key = (r) => r.ma_kh + "\u0001" + r.nganh_hang;
     const m = new Map();
     const get = (r) => {
       const k = key(r);
       let x = m.get(k);
-      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, ten_kh: r.ten_kh, ten_kh_goc: r.ten_kh_goc || r.ten_kh, ten_nv: r.ten_nv, loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
-        nganh: new Set(), A0: 0, A1: 0, A2: 0, A3: 0, A4: 0, tong: 0, qua_han: 0, prev_qua_han: 0, prev_tong: 0, max_ngay: 0, so_hd: 0, chua_bbbg: 0, thu: 0 });
+      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, nganh_hang: r.nganh_hang, ten_kh: r.ten_kh, ten_kh_goc: r.ten_kh_goc || r.ten_kh, nv: new Set(), loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
+        nganh: new Set([r.nganh_hang]), A0: 0, A1: 0, A2: 0, A3: 0, A4: 0, tong: 0, qua_han: 0, prev_qua_han: 0, prev_tong: 0, max_ngay: 0, so_hd: 0, chua_bbbg: 0, thu: 0 });
       return x;
     };
     for (const r of rows) {
@@ -158,7 +158,7 @@
       if (r.ky === ky) {
         x.ten_kh = r.ten_kh || x.ten_kh;
         x.ten_kh_goc = r.ten_kh_goc || x.ten_kh_goc;
-        x.nganh.add(r.nganh_hang);
+        x.nv.add(r.ten_nv);
         x[r.nhom_no] = (x[r.nhom_no] || 0) + r.con_no;
         x.tong += r.con_no;
         x.so_hd += r.so_hd;
@@ -176,6 +176,8 @@
     for (const x of m.values()) {
       if (x.tong === 0 && x.prev_tong === 0) continue;
       x.nganh = [...x.nganh];
+      x.nv = [...x.nv].sort((a, b) => a.localeCompare(b, "vi"));
+      x.ten_nv = x.nv.join(", ");
       x.gt = gtCur.get(x.key) || null;
       x.gt_prev = gtPrev.get(x.key) || null;
       x.trang_thai = stOf(x.gt);

@@ -30,7 +30,7 @@
     const save = async (submit) => {
       setBusy(true); setMsg(null);
       try {
-        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, ten_nv: k.ten_nv, submit, fields: { ...form, ten_kh: k.ten_kh } });
+        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, submit, fields: { ...form, ten_kh: k.ten_kh } });
         onSaved(r.row);
         setMsg({ ok: true, text: !D.PHE_DUYET ? "Đã lưu giải trình" : submit ? "Đã gửi duyệt" : "Đã lưu nháp" });
       } catch (e) { setMsg({ ok: false, text: errorText(e.message) }); }
@@ -102,10 +102,10 @@
     const [tick, setTick] = useState(0);
     useEffect(() => {
       let alive = true;
-      api("get_kh", { ky: data.meta.ky, ma_kh: k.ma_kh, ten_nv: k.ten_nv })
+      api("get_kh", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang })
         .then((r) => alive && setDet(r)).catch((e) => alive && setErr(errorText(e.message)));
       return () => { alive = false; };
-    }, [k.ma_kh, k.ten_nv, data.meta.ky, tick]);
+    }, [k.ma_kh, k.nganh_hang, data.meta.ky, tick]);
     // Lưu/duyệt xong: cập nhật danh sách + tải lại lịch sử thao tác trong popup.
     const saved = (row) => { onSaved(row); setTick((t) => t + 1); };
 
@@ -114,7 +114,7 @@
     const stat = (label, v, cls = "") => h("div", { className: "rounded-md border border-slate-200 bg-white px-3 py-2" },
       h("div", { className: "text-[10px] uppercase tracking-wide text-slate-400" }, label), h("div", { className: "text-[15px] font-semibold tabular-nums " + cls }, v));
 
-    return h(UI.Modal, { open: true, onClose, width: 1040, title: k.ten_kh + " · " + k.ten_nv },
+    return h(UI.Modal, { open: true, onClose, width: 1040, title: k.ten_kh + " · " + k.nganh_hang + "  (sale: " + k.ten_nv + ")" },
       h("div", { className: "flex max-h-[78vh] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
@@ -144,14 +144,14 @@
                 : !det ? h(UI.LoadingBlock, null)
                 : h("div", { className: "scroll-shadow max-h-[420px] overflow-auto" }, h("table", { className: T.table },
                     h("thead", { className: "sticky top-0" }, h("tr", { className: T.headRow },
-                      ["Số HĐ", "Ngày HĐ", "Đến hạn", "Quá hạn", "Nhóm", "Ngành", "Còn nợ", "Chứng từ"].map((x, i) => h("th", { key: x, className: T.th(i === 3 || i === 6) }, x)))),
+                      ["Số HĐ", "Ngày HĐ", "Đến hạn", "Quá hạn", "Nhóm", "Sale", "Còn nợ", "Chứng từ"].map((x, i) => h("th", { key: x, className: T.th(i === 3 || i === 6) }, x)))),
                     h("tbody", null, hd.map((r, i) => h("tr", { key: i, className: T.row(i) },
                       h("td", { className: T.td + " whitespace-nowrap" }, r.so_hd),
                       h("td", { className: T.td + " whitespace-nowrap" }, fmtDate(r.ngay_hd)),
                       h("td", { className: T.td + " whitespace-nowrap" }, fmtDate(r.ngay_den_han)),
                       h("td", { className: T.num }, r.so_ngay_qua_han + " ng"),
                       h("td", { className: T.td }, h(UI.Badge, { tone: D.NHOM_GT.includes(r.nhom_no) ? "red" : "amber" }, r.nhom_no)),
-                      h("td", { className: T.td + " whitespace-nowrap text-[11px]" }, r.nganh_hang),
+                      h("td", { className: T.td + " whitespace-nowrap text-[11px]" }, r.ten_nv),
                       h("td", { className: T.num }, fmtTr(r.con_no, 1)),
                       (() => {
                         const ct = [r.bbbg, r.hop_dong_ban, r.khong_chung_tu ? "Thiếu BBBG/ĐCCN" : null, r.ghi_chu].filter(Boolean).join(" · ") || "—";
@@ -189,9 +189,9 @@
     const [open, setOpen] = useState(null);
     const khach = useMemo(() => D.buildKhach(data, f), [data, f.nganh.join(), f.nv.join(), f.loai.join()]);
     const need = khach.filter((k) => k.can_gt);
-    const canEditNv = data.can_edit_nv; // null = admin sửa tất cả
+    const canEditKeys = data.can_edit_keys === undefined ? [] : data.can_edit_keys; // null = admin/manager sửa tất cả
     const approveNv = new Set(data.can_approve_nv || []);
-    const isMine = (k) => canEditNv == null || canEditNv.includes(k.ten_nv);
+    const isMine = (k) => canEditKeys == null || canEditKeys.includes(k.key);
 
     const counts = { all: need.length };
     for (const k of need) { counts[k.trang_thai] = (counts[k.trang_thai] || 0) + 1; if (k.can_cap_nhat) counts.can_cap_nhat = (counts.can_cap_nhat || 0) + 1; }
@@ -212,7 +212,7 @@
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
 
       list.length === 0 ? h(UI.Empty, null, need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
-      : h(UI.Panel, { title: "Khách hàng phải giải trình (nợ A2–A4)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
+      : h(UI.Panel, { title: "Khách hàng × ngành hàng phải giải trình (nợ A2–A4)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
               ["Khách hàng", "Sale", "Ngành", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
@@ -220,7 +220,7 @@
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
               const action = isMine(k) && (k.trang_thai === "chua" || (!D.PHE_DUYET && !(kyMeta && kyMeta.khoa)) || ["nhap", "tra_lai"].includes(k.trang_thai)) ? (k.trang_thai === "chua" ? "Giải trình" : "Sửa")
-                : approveNv.has(k.ten_nv) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
+                : k.nv.some((nv) => approveNv.has(nv)) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
               return h("tr", { key: k.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(k.key) },
                 h("td", { className: T.td }, h("div", { className: "font-medium text-slate-800", title: k.ten_kh_goc }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
                 h("td", { className: T.td + " whitespace-nowrap" }, k.ten_nv),
@@ -240,7 +240,7 @@
 
       sel && h(KhachModal, {
         k: sel, data, kyMeta, onClose: () => setOpen(null), onSaved: patchGt,
-        canEdit: isMine(sel), canApprove: approveNv.has(sel.ten_nv),
+        canEdit: isMine(sel), canApprove: sel.nv.some((nv) => approveNv.has(nv)),
       }));
   }
 

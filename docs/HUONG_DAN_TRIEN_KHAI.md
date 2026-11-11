@@ -4,7 +4,7 @@
 
 ### Bước 1 — Tạo schema trên Supabase
 1. Mở Supabase project `nrfxymnfmjhbsgpipvkb` → **SQL Editor**.
-2. Dán và chạy lần lượt [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql), [sql/02_thang_du_kien.sql](../sql/02_thang_du_kien.sql).
+2. Dán và chạy lần lượt [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql), [sql/02_thang_du_kien.sql](../sql/02_thang_du_kien.sql), [sql/03_giai_trinh_kh_nganh.sql](../sql/03_giai_trinh_kh_nganh.sql).
 3. Chạy câu kiểm tra ở cuối file. Cả 3 cột phải là `false` (anon không đọc được dữ liệu công nợ).
 4. **Settings → API → Exposed schemas**: thêm `app_debt`, bấm Save.
 
@@ -48,7 +48,7 @@ Quyền đi theo `shared.dm_ps` (dùng chung với sale-target):
 | Kế toán gửi file | Admin | Quản trị → nạp file → kiểm đối chiếu → nạp. Đặt hạn giải trình (ví dụ +7 ngày). Gắn tài khoản cho sale mới nếu có. |
 | Ngay sau đó | Admin | Gửi link app cho area manager và sale (email/Zalo nhóm). |
 | Trong hạn | Area manager | Tab **Giải trình** → bấm từng KH "Chưa giải trình" → ghi giải trình & kế hoạch xử lý, chọn tháng dự kiến thu (yyyy-mm) → **Lưu giải trình** (sửa lại được tới khi khoá kỳ). Từ kỳ thứ 2, nội dung tự điền sẵn từ kỳ trước, tháng phải chọn lại. Sale vào xem phần của mình. |
-| Trong hạn | Quản lý | Tab **Tổng hợp A2–A4** → bảng theo team: cột cuối cho biết KH nào chưa giải trình. (Luồng duyệt đang tắt.) |
+| Trong hạn | Quản lý | Tab **Tổng hợp A1–A4** → bảng theo team: cột cuối cho biết KH nào chưa giải trình. (Luồng duyệt đang tắt.) |
 | Hết hạn | Quản lý | Tab **Theo sale**: ai chưa xong, bao nhiêu KH hẹn thu kỳ trước đã có tiền về. **Xuất Excel** danh sách giải trình để báo cáo. |
 | Chốt | Admin | Quản trị → tick **Khoá** kỳ. Không ai sửa/duyệt được nữa. |
 

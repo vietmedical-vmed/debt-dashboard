@@ -30,7 +30,7 @@ Frontend (GitHub Pages)            Backend (Supabase nrfxymnfmjhbsgpipvkb)
 |---|---|---|
 | Tổng quan | Tất cả | KPI, tiến độ giải trình, biến động dư nợ, cơ cấu nhóm nợ / nhóm KH, top 15 KH quá hạn |
 | Giải trình | Area manager, quản lý, sale (xem) | Danh sách KH × sale có nợ A2–A4; popup hóa đơn A2–A4, giải trình + tháng dự kiến thu, duyệt / trả lại, lịch sử |
-| Tổng hợp A2–A4 | Admin, manager | Nhóm nợ A4→A2 × KH, cột BU → team (dm_ps), cột cuối đã/chưa giải trình, xuất Excel |
+| Tổng hợp A1–A4 | Admin, manager | Nhóm nợ A4→A1 × KH, cột BU → team (dm_ps), cột giải trình (đã/chưa, A1 không bắt buộc), chi tiết giải trình, tháng dự kiến thu, xuất Excel |
 | Theo sale | Tất cả | Dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
 | Hàng vay chưa xuất HĐ | Tất cả | Theo KH × sale, xem chứng từ, xuất Excel |
 | Quản trị | Admin | Nạp file, hạn giải trình, khoá kỳ, xem phân quyền theo dm_ps, gắn tay / người duyệt riêng |
@@ -54,7 +54,7 @@ Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả v
 
 ## Nội dung giải trình
 
-Mỗi KH × sale có nợ A2–A4: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Popup chỉ hiện hóa đơn A2–A4.
+Đơn vị giải trình: **kỳ × khách hàng × ngành hàng** (không phân biệt sale) có nợ A2–A4 — mỗi cặp giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp và thấy hóa đơn của mọi sale trong cặp. Popup chỉ hiện hóa đơn A2–A4.
 Luồng phê duyệt **đang tắt** (`PHE_DUYET = false` ở `config.js` và `debt-api`): lưu giải trình = "Đã giải trình", area manager sửa lại được tới khi admin khoá kỳ.
 Bật lại thì có: lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
 
@@ -69,7 +69,7 @@ dashboard/                 → deploy GitHub Pages
   assets/js/data.js        tải + tổng hợp số liệu kỳ, bộ lọc chung
   assets/js/screens/*.js   tong-quan, giai-trinh, theo-sale, hang-vay, quan-tri
 supabase/functions/debt-login, debt-api
-sql/01_schema_app_debt.sql, sql/02_thang_du_kien.sql
+sql/01_schema_app_debt.sql, sql/02_thang_du_kien.sql, sql/03_giai_trinh_kh_nganh.sql
 ```
 
 ## Chạy thử không cần máy chủ

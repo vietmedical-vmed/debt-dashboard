@@ -11,7 +11,7 @@
   const TABS = [
     { path: "/tong-quan", label: "Tổng quan" },
     { path: "/giai-trinh", label: "Giải trình" },
-    { path: "/tong-hop", label: "Tổng hợp A2–A4", roles: ["admin", "manager"] },
+    { path: "/tong-hop", label: "Tổng hợp A1–A4", roles: ["admin", "manager"] },
     { path: "/theo-sale", label: "Theo sale" },
     { path: "/hang-vay", label: "Hàng vay chưa xuất HĐ" },
     { path: "/quan-tri", label: "Quản trị", admin: true },
