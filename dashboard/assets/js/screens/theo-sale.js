@@ -68,24 +68,40 @@
       .sort((a, b) => a.bu.localeCompare(b.bu, "vi") || (a.team === NO_TEAM) - (b.team === NO_TEAM) || a.team.localeCompare(b.team, "vi"));
     const bus = [];
     for (const c of colList) { const last = bus[bus.length - 1]; if (last && last.bu === c.bu) last.n++; else bus.push({ bu: c.bu, n: 1 }); }
-    // Giải trình theo cặp KH × ngành (đơn vị giải trình)
-    const khMap = new Map(D.buildKhach(data, f).map((k) => [k.key, k]));
+    // Giải trình theo đơn vị KH × ngành × nhóm giải trình (area manager / sale tự giải trình)
+    const khList = D.buildKhach(data, f);
+    const khMap = new Map(khList.map((k) => [k.key, k]));
+    const byPair = new Map(); // "ma\u0001ngành" → [đơn vị]
+    for (const k of khList) {
+      const pk = k.ma_kh + SEP + k.nganh_hang;
+      if (!byPair.has(pk)) byPair.set(pk, []);
+      byPair.get(pk).push(k);
+    }
     const status = (ma, nganhSet) => {
-      const pairs = [...nganhSet].map((ng) => khMap.get(ma + SEP + ng)).filter(Boolean)
-        .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi"));
-      const need = pairs.filter((k) => k.can_gt);
-      const withGt = pairs.filter((k) => k.gt && k.trang_thai !== "chua");
-      const many = withGt.length > 1;
-      // Mỗi ngành phải giải trình (hoặc đã có giải trình) = 1 dòng trong ô Chi tiết / Tháng
-      const items = pairs.filter((k) => k.can_gt || (k.gt && k.trang_thai !== "chua"));
+      const units = [...nganhSet].flatMap((ng) => byPair.get(ma + SEP + ng) || [])
+        .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi") || String(a.nhom_label).localeCompare(String(b.nhom_label), "vi"));
+      const need = units.filter((k) => k.can_gt);
+      // Mỗi đơn vị phải giải trình (hoặc đã có giải trình) = 1 dòng trong ô Chi tiết / Tháng
+      const items = units.filter((k) => k.can_gt || (k.gt && k.trang_thai !== "chua"));
+      const nganhCount = new Set(items.map((k) => k.nganh_hang)).size;
+      // Nhãn đầu dòng: tên ngành nếu nhiều ngành; thêm người giải trình nếu 1 ngành có nhiều nhóm
+      const label = (k) => {
+        const sameNganh = items.filter((u) => u.nganh_hang === k.nganh_hang).length > 1;
+        const parts = [];
+        if (nganhCount > 1) parts.push(k.nganh_hang);
+        if (sameNganh) parts.push(k.nhom_label || "—");
+        return parts.join(" · ");
+      };
+      const withGt = items.filter((k) => k.gt && k.trang_thai !== "chua");
+      const pre = (k) => (label(k) ? label(k) + ": " : "");
       return {
-        items,
+        items: items.map((k) => ({ k, label: label(k) })),
         need: need.length,
         done: need.filter((k) => k.trang_thai === D.DONE).length,
         total: need.length,
-        list: need.map((k) => ({ nganh: k.nganh_hang, st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
-        chi_tiet: withGt.map((k) => (many ? k.nganh_hang + ": " : "") + (k.gt.ke_hoach || "")).join("\n"),
-        thang: withGt.map((k) => (many ? k.nganh_hang + ": " : "") + (k.gt.thang_du_kien || "")).join("\n"),
+        list: need.map((k) => ({ nganh: [k.nganh_hang, k.nhom_label].filter(Boolean).join(" · "), st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
+        chi_tiet: withGt.map((k) => pre(k) + (k.gt.ke_hoach || "")).join("\n"),
+        thang: withGt.map((k) => pre(k) + (k.gt.thang_du_kien || "")).join("\n"),
       };
     };
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
@@ -102,7 +118,7 @@
 
   // Ô "Giải trình": chỉ tính các cặp KH × ngành có nợ A2–A4; KH chỉ có A1 → "Không bắt buộc".
   const gtText = (gt) => (!gt.need ? "Không bắt buộc"
-    : (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " ngành" : "Chưa giải trình")
+    : (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " phần" : "Chưa giải trình")
       + (gt.list.some((x) => x.cap_nhat) ? " · cần cập nhật" : ""));
   const groupText = (g) => (g.need ? g.done + "/" + g.need + " KH đã GT" : "Không bắt buộc");
 
@@ -128,20 +144,19 @@
     const locked = !!(kyMeta && kyMeta.khoa);
     const sel = openKey && pv.khMap.get(openKey);
     const Modal = window.DEBT_GT && window.DEBT_GT.KhachModal;
-    const many = (x) => x.gt.items.length > 1;
     // Ô Chi tiết giải trình: mỗi ngành 1 dòng; chưa có → nút "Giải trình"
     const DetailCell = ({ x }) => {
       if (!x.gt.items.length) return h("span", { className: "text-slate-300" }, "—");
-      return h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map((k) => {
+      return h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map(({ k, label: lb }) => {
         const has = k.gt && k.trang_thai !== "chua";
-        const label = many(x) && h("span", { className: "mr-1 font-semibold text-slate-500" }, k.nganh_hang + ":");
+        const label = lb && h("span", { className: "mr-1 font-semibold text-slate-500" }, lb + ":");
         if (has) {
           return h("button", { key: k.key, type: "button", onClick: () => setOpenKey(k.key), title: k.gt.ke_hoach,
             className: "max-w-[420px] text-left hover:text-blue-700" },
             h("span", { className: "line-clamp-3 whitespace-pre-wrap" }, label, k.gt.ke_hoach),
             k.can_cap_nhat && h(UI.Badge, { tone: "amber" }, "Cần cập nhật"));
         }
-        return h("div", { key: k.key, className: "flex items-center gap-1" }, label,
+        return h("div", { key: k.key, className: "flex flex-wrap items-center gap-1" }, label,
           canEditKey(k.key) && !locked
             ? h("button", { type: "button", onClick: () => setOpenKey(k.key),
                 className: "inline-flex items-center gap-1 rounded border border-blue-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-blue-700 hover:bg-blue-50" },
@@ -150,8 +165,8 @@
       }));
     };
     const ThangCell = ({ x }) => !x.gt.items.length ? h("span", { className: "text-slate-300" }, "—")
-      : h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map((k) => h("div", { key: k.key, className: "whitespace-nowrap" },
-          many(x) && h("span", { className: "mr-1 text-slate-400" }, k.nganh_hang + ":"),
+      : h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map(({ k, label: lb }) => h("div", { key: k.key, className: "whitespace-nowrap" },
+          lb && h("span", { className: "mr-1 text-slate-400" }, lb + ":"),
           k.gt && k.trang_thai !== "chua" && k.gt.thang_du_kien ? k.gt.thang_du_kien : h("span", { className: "text-slate-300" }, "—"))));
     if (!pv.groups.length) return null;
     const v = (n) => (n ? fmtTr(n, 1) : "");

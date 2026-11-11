@@ -118,20 +118,25 @@
     const NHOM_GT = D.NHOM_GT;
     const SEP = "\u0001";
     const cur = parsed.cong_no.filter((r) => r.ky === parsed.ky && !r.loai_tru);
-    const newPair = new Map(), newKhQh = new Set(), newKh = new Set();
+    // Nhóm giải trình của sale theo phân quyền hiện tại (giống debt-api)
+    const normName = (v) => String(v == null ? "" : v).normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+    const nhomOf = (nv) => (check.nhom_by_nv || {})[normName(nv)] || "nv:" + normName(nv);
+    const newPair = new Map(), newKhQh = new Set(), newKh = new Set(), newKhNganh = new Set();
     for (const r of cur) {
       newKh.add(r.ma_kh);
       if (!NHOM_GT.includes(r.nhom_no)) continue;
       newKhQh.add(r.ma_kh);
-      const k = r.ma_kh + SEP + r.nganh_hang;
+      newKhNganh.add(r.ma_kh + SEP + r.nganh_hang);
+      const k = r.ma_kh + SEP + r.nganh_hang + SEP + nhomOf(r.ten_nv);
       newPair.set(k, (newPair.get(k) || 0) + r.con_no);
     }
     const saved = (check.giai_trinh || []).filter((g) => D.stOf(g) !== "chua");
     const an = [], capNhat = [];
     for (const g of saved) {
-      const k = g.ma_kh + SEP + g.nganh_hang;
+      const k = g.ma_kh + SEP + g.nganh_hang + SEP + (g.nhom_gt || "");
       if (!newPair.has(k)) {
-        an.push({ ...g, ly_do: newKhQh.has(g.ma_kh) ? "KH còn nợ A2–A4 nhưng không còn ở ngành này" : newKh.has(g.ma_kh) ? "KH không còn nợ A2–A4" : "Mã KH không còn trong file" });
+        an.push({ ...g, ly_do: newKhNganh.has(g.ma_kh + SEP + g.nganh_hang) ? "Ngành này còn nợ A2–A4 nhưng không còn sale của nhóm giải trình này"
+          : newKhQh.has(g.ma_kh) ? "KH còn nợ A2–A4 nhưng không còn ở ngành này" : newKh.has(g.ma_kh) ? "KH không còn nợ A2–A4" : "Mã KH không còn trong file" });
       } else if (D.canCapNhat(g.du_no_qua_han, newPair.get(k))) {
         capNhat.push({ ...g, moi: newPair.get(k) });
       }
@@ -165,14 +170,14 @@
       an.length > 0 && h("div", { className: "max-h-48 overflow-y-auto rounded border border-red-200 bg-white" },
         h("table", { className: T.table },
           h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Ngành", "A2–A4 lúc lưu (tr)", "Lý do bị ẩn"].map((x, i) => h("th", { key: x, className: T.th(i === 2) }, x)))),
-          h("tbody", null, an.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang, className: T.row(i) },
+          h("tbody", null, an.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang + (g.nhom_gt || ""), className: T.row(i) },
             h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.nganh_hang),
             h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.td + " text-red-700" }, g.ly_do)))))),
       capNhat.length > 0 && h("details", { className: "rounded border border-amber-200 bg-white px-3 py-2" },
         h("summary", { className: "cursor-pointer font-medium" }, "Xem " + capNhat.length + " giải trình sẽ cần cập nhật"),
         h("table", { className: T.table + " mt-2" },
           h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Ngành", "A2–A4 lúc lưu (tr)", "A2–A4 file mới (tr)"].map((x, i) => h("th", { key: x, className: T.th(i >= 2) }, x)))),
-          h("tbody", null, capNhat.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang, className: T.row(i) },
+          h("tbody", null, capNhat.map((g, i) => h("tr", { key: g.ma_kh + g.nganh_hang + (g.nhom_gt || ""), className: T.row(i) },
             h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.nganh_hang),
             h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.num }, fmtTr(g.moi, 1))))))),
       h("label", { className: "flex items-center gap-2 font-medium" },

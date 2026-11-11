@@ -140,16 +140,17 @@
     return m;
   }
 
-  // Bảng KH × ngành hàng của kỳ (đơn vị giải trình): số dư theo nhóm, A2–A4, so kỳ trước, thu trong tháng, giải trình.
+  // Bảng đơn vị giải trình của kỳ = KH × ngành hàng × nhóm giải trình (area manager phụ trách, hoặc sale tự giải trình):
+  // số dư theo nhóm nợ, A2–A4, so kỳ trước, thu trong tháng, giải trình.
   function buildKhach(data, f) {
     const ky = data.meta.ky, kyTruoc = data.meta.ky_truoc;
     const rows = applyFilter(data.agg, f);
-    const key = (r) => r.ma_kh + "\u0001" + r.nganh_hang;
+    const key = (r) => r.ma_kh + "\u0001" + r.nganh_hang + "\u0001" + (r.nhom_gt || "");
     const m = new Map();
     const get = (r) => {
       const k = key(r);
       let x = m.get(k);
-      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, nganh_hang: r.nganh_hang, ten_kh: r.ten_kh, ten_kh_goc: r.ten_kh_goc || r.ten_kh, nv: new Set(), loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
+      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, nganh_hang: r.nganh_hang, nhom_gt: r.nhom_gt || "", nhom_label: (data.nhom_label || {})[r.nhom_gt] || "", ten_kh: r.ten_kh, ten_kh_goc: r.ten_kh_goc || r.ten_kh, nv: new Set(), loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
         nganh: new Set([r.nganh_hang]), A0: 0, A1: 0, A2: 0, A3: 0, A4: 0, tong: 0, qua_han: 0, prev_qua_han: 0, prev_tong: 0, max_ngay: 0, so_hd: 0, chua_bbbg: 0, thu: 0 });
       return x;
     };

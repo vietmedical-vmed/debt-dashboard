@@ -30,7 +30,7 @@
     const save = async (submit) => {
       setBusy(true); setMsg(null);
       try {
-        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, submit, fields: { ...form, ten_kh: k.ten_kh } });
+        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, nhom_gt: k.nhom_gt, submit, fields: { ...form, ten_kh: k.ten_kh } });
         onSaved(r.row);
         setMsg({ ok: true, text: !D.PHE_DUYET ? "Đã lưu giải trình" : submit ? "Đã gửi duyệt" : "Đã lưu nháp" });
       } catch (e) { setMsg({ ok: false, text: errorText(e.message) }); }
@@ -104,10 +104,10 @@
     const [tick, setTick] = useState(0);
     useEffect(() => {
       let alive = true;
-      api("get_kh", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang })
+      api("get_kh", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, nhom_gt: k.nhom_gt })
         .then((r) => alive && setDet(r)).catch((e) => alive && setErr(errorText(e.message)));
       return () => { alive = false; };
-    }, [k.ma_kh, k.nganh_hang, data.meta.ky, tick]);
+    }, [k.ma_kh, k.nganh_hang, k.nhom_gt, data.meta.ky, tick]);
     // Lưu/duyệt xong: cập nhật danh sách + tải lại lịch sử thao tác trong popup.
     const saved = (row) => { onSaved(row); setTick((t) => t + 1); };
 
@@ -116,7 +116,7 @@
     const stat = (label, v, cls = "") => h("div", { className: "rounded-md border border-slate-200 bg-white px-3 py-2" },
       h("div", { className: "text-[10px] uppercase tracking-wide text-slate-400" }, label), h("div", { className: "text-[15px] font-semibold tabular-nums " + cls }, v));
 
-    return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + k.nganh_hang + "  (sale: " + k.ten_nv + ")" },
+    return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + k.nganh_hang + "  ·  người giải trình: " + (k.nhom_label || "—") + "  (sale: " + k.ten_nv + ")" },
       h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
@@ -214,7 +214,7 @@
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
 
       list.length === 0 ? h(UI.Empty, null, need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
-      : h(UI.Panel, { title: "Khách hàng × ngành hàng phải giải trình (nợ A2–A4)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
+      : h(UI.Panel, { title: "Khách hàng × ngành hàng phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
               ["Khách hàng", "Sale", "Ngành", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
@@ -225,7 +225,8 @@
                 : k.nv.some((nv) => approveNv.has(nv)) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
               return h("tr", { key: k.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(k.key) },
                 h("td", { className: T.td + " max-w-[300px] whitespace-nowrap" }, h("div", { className: "truncate font-medium text-slate-800", title: k.ten_kh + (k.ten_kh_goc && k.ten_kh_goc !== k.ten_kh ? "\n" + k.ten_kh_goc : "") }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
-                h("td", { className: T.td + " max-w-[200px] text-[12px]" }, k.nv.map((nv) => h("div", { key: nv }, nv))),
+                h("td", { className: T.td + " max-w-[200px] text-[12px]" }, k.nv.map((nv) => h("div", { key: nv }, nv)),
+                  k.nhom_gt.startsWith("am:") && h("div", { className: "mt-0.5 text-[11px] text-slate-400" }, "GT: " + k.nhom_label)),
                 h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, n))),
                 h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
                 h("td", { className: T.num + (d > 0.5e6 ? " text-red-600" : d < -0.5e6 ? " text-green-700" : " text-slate-400") }, (d > 0 ? "+" : "") + fmtTr(d)),

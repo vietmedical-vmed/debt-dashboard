@@ -4,7 +4,7 @@
 
 ### Bước 1 — Tạo schema trên Supabase
 1. Mở Supabase project `nrfxymnfmjhbsgpipvkb` → **SQL Editor**.
-2. Dán và chạy lần lượt [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql), [sql/02_thang_du_kien.sql](../sql/02_thang_du_kien.sql), [sql/03_giai_trinh_kh_nganh.sql](../sql/03_giai_trinh_kh_nganh.sql).
+2. Dán và chạy lần lượt [sql/01_schema_app_debt.sql](../sql/01_schema_app_debt.sql), [sql/02_thang_du_kien.sql](../sql/02_thang_du_kien.sql), [sql/03_giai_trinh_kh_nganh.sql](../sql/03_giai_trinh_kh_nganh.sql), [sql/04_giai_trinh_nhom.sql](../sql/04_giai_trinh_nhom.sql).
 3. Chạy câu kiểm tra ở cuối file. Cả 3 cột phải là `false` (anon không đọc được dữ liệu công nợ).
 4. **Settings → API → Exposed schemas**: thêm `app_debt`, bấm Save.
 

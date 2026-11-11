@@ -54,7 +54,7 @@ Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả v
 
 ## Nội dung giải trình
 
-Đơn vị giải trình: **kỳ × khách hàng × ngành hàng** (không phân biệt sale) có nợ A2–A4 — mỗi cặp giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp, nhưng chỉ thấy tên, số tiền, hóa đơn của sale mình phụ trách (số A2–A4 lúc lưu của cả cặp bị ẩn; cờ "Cần cập nhật" tính ở server). Popup chỉ hiện hóa đơn A2–A4.
+Đơn vị giải trình: **kỳ × khách hàng × ngành hàng × người giải trình** (area manager phụ trách sale; sale không có AM thì nhóm riêng của sale đó) có nợ A2–A4 — mỗi đơn vị giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp, nhưng chỉ thấy tên, số tiền, hóa đơn của sale mình phụ trách (số A2–A4 lúc lưu của cả cặp bị ẩn; cờ "Cần cập nhật" tính ở server). Popup chỉ hiện hóa đơn A2–A4.
 Luồng phê duyệt **đang tắt** (`PHE_DUYET = false` ở `config.js` và `debt-api`): lưu giải trình = "Đã giải trình", area manager sửa lại được tới khi admin khoá kỳ.
 Bật lại thì có: lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
 
@@ -69,7 +69,7 @@ dashboard/                 → deploy GitHub Pages
   assets/js/data.js        tải + tổng hợp số liệu kỳ, bộ lọc chung
   assets/js/screens/*.js   tong-quan, giai-trinh, theo-sale, hang-vay, quan-tri
 supabase/functions/debt-login, debt-api
-sql/01_schema_app_debt.sql, sql/02_thang_du_kien.sql, sql/03_giai_trinh_kh_nganh.sql
+sql/01_schema_app_debt.sql, sql/02_thang_du_kien.sql, sql/03_giai_trinh_kh_nganh.sql, sql/04_giai_trinh_nhom.sql
 ```
 
 ## Chạy thử không cần máy chủ

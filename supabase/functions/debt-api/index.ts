@@ -148,7 +148,7 @@ function amCoverage(dir: PsRow[], ams: AmRow[]) {
   return cov;
 }
 
-async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[]; dir: PsRow[] }> {
+async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[]; dir: PsRow[]; cov: Map<string, string[]>; ams: AmRow[] }> {
   const [{ data, error }, { data: dirData, error: e2 }] = await Promise.all([
     db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet"),
     db.schema("shared").from("dm_ps").select("ps, ten_ps, bu, bu_code, team, area, trang_thai"),
@@ -182,12 +182,12 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
   if (role === "area_manager" && !AM_EXCLUDE.has(me)) {
     perm.amNv = managedPs(dir, { username: me, scope: s.scope, mien: s.mien, bu: s.bu, ho_ten: s.ho_ten });
   }
+  // Phạm vi mọi area manager: dùng để chia nhóm giải trình và xác định sale tự giải trình.
+  const ams = await loadAms(db);
+  const cov = amCoverage(dir, ams);
   // Sale không có area manager phụ trách (vd CTTM Miền Nam) thì tự giải trình KH của mình.
-  if (perm.myNv.size) {
-    const cov = amCoverage(dir, await loadAms(db));
-    for (const n of perm.myNv) if (!cov.has(n)) perm.selfNv.add(n);
-  }
-  return { perm, map, dir };
+  for (const n of perm.myNv) if (!cov.has(n)) perm.selfNv.add(n);
+  return { perm, map, dir, cov, ams };
 }
 
 function canSee(p: Perm, row: { bu?: string | null; ten_nv: string }) {
@@ -198,12 +198,6 @@ function canSee(p: Perm, row: { bu?: string | null; ten_nv: string }) {
   return p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n);
 }
 
-// Người giải trình: admin, manager (mọi KH); area_manager phụ trách PS đó; sale tự giải trình nếu không có AM.
-function canEdit(p: Perm, tenNv: string) {
-  if (p.role === "admin" || p.role === "manager") return true;
-  const n = normName(tenNv);
-  return p.amNv.has(n) || p.selfNv.has(n);
-}
 
 // Người duyệt: admin, manager, hoặc người được chỉ định ở sale_map.
 function canApprove(p: Perm, tenNv: string) {
@@ -274,20 +268,19 @@ async function aliasByName(db: SupabaseClient, names: string[]) {
   return out;
 }
 
-// ─── Đơn vị giải trình: kỳ × KH × ngành hàng (không phân biệt sale) ───
+// ─── Đơn vị giải trình: kỳ × KH × ngành hàng × nhóm giải trình (người phụ trách) ───
 const pairKey = (ma: unknown, nganh: unknown) => String(ma ?? "") + "\u0001" + String(nganh ?? "");
-// Người giải trình của 1 cặp KH × ngành: admin, manager; area manager phụ trách bất kỳ sale nào trong cặp;
-// sale tự giải trình (PS không có AM) nếu chính mình có trong cặp.
-function canEditPair(p: Perm, nvs: Iterable<string>) {
-  if (p.role === "admin" || p.role === "manager") return true;
-  for (const nv of nvs) { const n = normName(nv); if (p.amNv.has(n) || p.selfNv.has(n)) return true; }
-  return false;
+const unitKey = (ma: unknown, nganh: unknown, nhom: unknown) => pairKey(ma, nganh) + "\u0001" + String(nhom ?? "");
+// Nhóm giải trình của 1 sale: "am:<username>" nếu có area manager phụ trách, không thì "nv:<tên sale>".
+function nhomOf(cov: Map<string, string[]>, nv: unknown) {
+  const a = cov.get(normName(nv));
+  return a && a.length ? "am:" + [...a].sort()[0] : "nv:" + normName(nv);
 }
-// Xem trọn cặp (mọi sale) hay chỉ phần của mình.
-function seeFullPair(p: Perm, nvs: Iterable<string>, bus: Iterable<string>) {
-  if (p.all) return true;
-  for (const b of bus) if (p.bu && b && p.bu.includes(b)) return true;
-  for (const nv of nvs) if (p.amNv.has(normName(nv))) return true;
+// Người giải trình của 1 nhóm: admin, manager; area manager của nhóm; sale tự giải trình (nhóm của chính mình).
+function canEditNhom(p: Perm, me: string, nhom: string) {
+  if (p.role === "admin" || p.role === "manager") return true;
+  if (nhom.startsWith("am:")) return p.role === "area_manager" && !AM_EXCLUDE.has(me) && nhom.slice(3) === me;
+  if (nhom.startsWith("nv:")) return p.selfNv.has(nhom.slice(3));
   return false;
 }
 async function pairRows(db: SupabaseClient, importId: string, ky: string, ma: string, nganh: string, cols: string, onlyQuaHan: boolean) {
@@ -301,7 +294,7 @@ async function pairRows(db: SupabaseClient, importId: string, ky: string, ma: st
 
 // ─── Actions ───────────────────────────────────────────────────────────
 async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
-  const { perm, dir } = await getPerm(db, s);
+  const { perm, dir, cov, ams } = await getPerm(db, s);
   if (perm.noAccess) throw new HttpError("forbidden", 403);
   const D = () => db.schema("app_debt");
 
@@ -351,41 +344,46 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         const id = r.ma_kh || idByName.get(normName(r.ten_kh));
         hv[i] = { ...r, ten_kh_goc: r.ten_kh, ten_kh: (id && alias.get(id)) || aliasName.get(normName(r.ten_kh)) || r.ten_kh };
       }
-      // Cặp KH × ngành → các sale / BU có trong cặp (cả kỳ này và kỳ trước).
-      const pairNv = new Map<string, Set<string>>(), pairBu = new Map<string, Set<string>>();
-      for (const r of agg) {
-        const k = pairKey(r.ma_kh, r.nganh_hang);
-        if (!pairNv.has(k)) { pairNv.set(k, new Set()); pairBu.set(k, new Set()); }
-        pairNv.get(k)!.add(r.ten_nv); if (r.bu) pairBu.get(k)!.add(r.bu);
-      }
-      // Mỗi người chỉ thấy dòng của sale trong phạm vi mình (area manager không thấy số / tên sale team khác),
-      // nhưng vẫn giải trình chung 1 lần cho cả cặp KH × ngành.
+      // Gắn nhóm giải trình (người phụ trách) cho từng dòng công nợ / thu tiền.
+      for (let i = 0; i < agg.length; i++) agg[i] = { ...agg[i], nhom_gt: nhomOf(cov, agg[i].ten_nv) };
+      for (let i = 0; i < tt.length; i++) tt[i] = { ...tt[i], nhom_gt: nhomOf(cov, tt[i].ten_nv) };
+      // Mỗi người chỉ thấy dòng của sale trong phạm vi mình (area manager không thấy số / tên sale team khác).
       const aggV = agg.filter((r) => canSee(perm, r));
-      const visiblePairs = new Set(aggV.map((r) => pairKey(r.ma_kh, r.nganh_hang)));
-      // Cặp thấy trọn (mọi dòng đều trong phạm vi) → được xem số A2–A4 lúc lưu; không thì ẩn số đó.
-      const pairTotal = new Map<string, number>(), pairVis = new Map<string, number>(), qhFull = new Map<string, number>();
+      const uk = (r: any) => unitKey(r.ma_kh, r.nganh_hang, r.nhom_gt);
+      const unitNhom = new Map<string, string>();
+      for (const r of aggV) unitNhom.set(uk(r), r.nhom_gt);
+      // Đơn vị thấy trọn (mọi dòng trong phạm vi) → được xem số A2–A4 lúc lưu; không thì ẩn số đó.
+      const unitTotal = new Map<string, number>(), unitVis = new Map<string, number>(), qhFull = new Map<string, number>();
       for (const r of agg) {
-        const k = pairKey(r.ma_kh, r.nganh_hang);
-        pairTotal.set(k, (pairTotal.get(k) ?? 0) + 1);
+        const k = uk(r);
+        unitTotal.set(k, (unitTotal.get(k) ?? 0) + 1);
         if (r.ky === ky && QUA_HAN.includes(r.nhom_no)) qhFull.set(k, (qhFull.get(k) ?? 0) + Number(r.con_no || 0));
       }
-      for (const r of aggV) { const k = pairKey(r.ma_kh, r.nganh_hang); pairVis.set(k, (pairVis.get(k) ?? 0) + 1); }
-      const fullPair = (k: string) => perm.all || (pairVis.get(k) ?? 0) === (pairTotal.get(k) ?? 0);
-      // "Cần cập nhật" tính trên số trọn cặp ở server (số lệch > 10% và > 10 triệu so với lúc lưu).
+      for (const r of aggV) { const k = uk(r); unitVis.set(k, (unitVis.get(k) ?? 0) + 1); }
+      const fullUnit = (k: string) => perm.all || (unitVis.get(k) ?? 0) === (unitTotal.get(k) ?? 0);
+      // "Cần cập nhật" tính trên số trọn đơn vị ở server (lệch > 10% và > 10 triệu so với lúc lưu).
       const canCapNhat = (r: any) => r.ky === ky && r.trang_thai !== "nhap" && r.du_no_qua_han != null
-        && Math.abs((qhFull.get(pairKey(r.ma_kh, r.nganh_hang)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)));
+        && Math.abs((qhFull.get(uk(r)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)));
+      // Tên hiển thị của nhóm: họ tên area manager, hoặc tên sale.
+      const amName = new Map(ams.map((u) => [u.username, u.ho_va_ten || u.username]));
+      const nvName = new Map(agg.map((r) => [nhomOf(cov, r.ten_nv), r.ten_nv]));
+      const nhomLabel: Record<string, string> = {};
+      for (const nhom of new Set(unitNhom.values())) {
+        nhomLabel[nhom] = nhom.startsWith("am:") ? (amName.get(nhom.slice(3)) ?? nhom.slice(3)) : (nvName.get(nhom) ?? nhom.slice(3));
+      }
       return {
         meta: perm.all ? meta : { ...meta, bien_dong: null, doi_chieu: null },
         agg: aggV,
         hang_vay: hv.filter((r) => canSee(perm, r)),
         thu_tien: tt.filter((r) => canSee(perm, r)),
-        giai_trinh: gt.filter((r) => visiblePairs.has(pairKey(r.ma_kh, r.nganh_hang))).map((r) => {
-          const full = fullPair(pairKey(r.ma_kh, r.nganh_hang));
+        giai_trinh: gt.filter((r) => unitNhom.has(uk(r))).map((r) => {
+          const full = fullUnit(uk(r));
           return { ...r, _can_cap_nhat: canCapNhat(r), du_no_qua_han: full ? r.du_no_qua_han : null, ten_nv: full ? r.ten_nv : null };
         }),
-        // null = sửa được tất cả (admin, manager); còn lại: danh sách khoá cặp "ma_kh\u0001ngành"
+        // null = sửa được tất cả (admin, manager); còn lại: khoá "ma_kh\u0001ngành\u0001nhóm" được giải trình
         can_edit_keys: perm.role === "admin" || perm.role === "manager" ? null
-          : [...visiblePairs].filter((k) => canEditPair(perm, pairNv.get(k) ?? [])),
+          : [...unitNhom.entries()].filter(([, nhom]) => canEditNhom(perm, s.username, nhom)).map(([k]) => k),
+        nhom_label: nhomLabel,
         phe_duyet: PHE_DUYET,
         // BU / team của từng tên NV theo dm_ps (cho bảng tổng hợp theo team)
         ps_dir: [...new Set([...aggV, ...hv.filter((r) => canSee(perm, r))].map((r) => r.ten_nv))].map((nv) => {
@@ -398,16 +396,16 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     // Chi tiết hóa đơn A2–A4 của 1 KH × ngành + lịch sử giải trình các kỳ.
     case "get_kh": {
       const ky = needKy(p.ky);
-      const ma = String(p.ma_kh || ""), nganh = String(p.nganh_hang || "");
+      const ma = String(p.ma_kh || ""), nganh = String(p.nganh_hang || ""), nhom = String(p.nhom_gt || "");
       const meta = await getKyRow(db, ky);
       if (!meta?.import_id) throw new HttpError("not_found", 404);
-      const rows = await pairRows(db, meta.import_id, ky, ma, nganh,
-        "ten_nv, so_hd, ngay_hd, ngay_den_han, so_ngay_qua_han, nhom_no, nganh_hang, bu, gia_tri_hd, da_thanh_toan, con_no, so_hop_dong, bbbg, hop_dong_ban, khong_chung_tu, ghi_chu, note", true);
-      const nvs = [...new Set(rows.map((r) => r.ten_nv))];
+      const rows = (await pairRows(db, meta.import_id, ky, ma, nganh,
+        "ten_nv, so_hd, ngay_hd, ngay_den_han, so_ngay_qua_han, nhom_no, nganh_hang, bu, gia_tri_hd, da_thanh_toan, con_no, so_hop_dong, bbbg, hop_dong_ban, khong_chung_tu, ghi_chu, note", true))
+        .filter((r) => nhomOf(cov, r.ten_nv) === nhom);
       const visible = perm.all ? rows : rows.filter((r) => canSee(perm, r));
       const full = visible.length === rows.length;
       if (!visible.length) throw new HttpError("forbidden", 403);
-      const { data: hist, error } = await D().from("giai_trinh").select("*").eq("ma_kh", ma).eq("nganh_hang", nganh).order("ky", { ascending: false });
+      const { data: hist, error } = await D().from("giai_trinh").select("*").eq("ma_kh", ma).eq("nganh_hang", nganh).eq("nhom_gt", nhom).order("ky", { ascending: false });
       if (error) throw new Error(error.message);
       const ids = (hist ?? []).map((h) => h.id);
       const { data: logs } = ids.length
@@ -420,16 +418,18 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     // Area manager (hoặc admin) lưu nháp / gửi duyệt.
     case "save_gt": {
       const ky = needKy(p.ky);
-      const ma = String(p.ma_kh || ""), nganh = String(p.nganh_hang || "");
-      if (!ma || !nganh) throw new HttpError("bad_payload");
+      const ma = String(p.ma_kh || ""), nganh = String(p.nganh_hang || ""), nhom = String(p.nhom_gt || "");
+      if (!ma || !nganh || !nhom) throw new HttpError("bad_payload");
       const meta = await getKyRow(db, ky);
       if (!meta?.import_id) throw new HttpError("not_found", 404);
       if (meta.khoa) throw new HttpError("ky_da_khoa");
-      const all = await pairRows(db, meta.import_id, ky, ma, nganh, "ten_nv, nhom_no, con_no, ten_kh, so_ngay_qua_han", false);
+      const all = (await pairRows(db, meta.import_id, ky, ma, nganh, "ten_nv, nhom_no, con_no, ten_kh, so_ngay_qua_han", false))
+        .filter((r) => nhomOf(cov, r.ten_nv) === nhom);
+      if (!all.length) throw new HttpError("not_found", 404);
       const nvs = [...new Set(all.map((r) => r.ten_nv))].sort();
-      if (!canEditPair(perm, nvs)) throw new HttpError("forbidden", 403);
+      if (!canEditNhom(perm, s.username, nhom)) throw new HttpError("forbidden", 403);
 
-      const { data: cur } = await D().from("giai_trinh").select("*").eq("ky", ky).eq("ma_kh", ma).eq("nganh_hang", nganh).maybeSingle();
+      const { data: cur } = await D().from("giai_trinh").select("*").eq("ky", ky).eq("ma_kh", ma).eq("nganh_hang", nganh).eq("nhom_gt", nhom).maybeSingle();
       if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) throw new HttpError("da_gui_khong_sua");
 
       const qh = all.filter((r) => QUA_HAN.includes(r.nhom_no));
@@ -438,7 +438,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const submit = PHE_DUYET ? !!p.submit : true; // không duyệt: lưu = đã giải trình
       const f = p.fields || {};
       const rec: Record<string, unknown> = {
-        ky, ma_kh: ma, nganh_hang: nganh, ten_nv: nvs.join(", "),
+        ky, ma_kh: ma, nganh_hang: nganh, nhom_gt: nhom, ten_nv: nvs.join(", "),
         ten_kh: str(f.ten_kh, 300) ?? all[0]?.ten_kh ?? cur?.ten_kh ?? null,
         du_no_qua_han: duNo,
         ke_hoach: str(f.ke_hoach),
@@ -453,7 +453,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         rec.nguoi_gui = s.username;
         rec.gui_luc = new Date().toISOString();
       }
-      const { data: saved, error } = await D().from("giai_trinh").upsert(rec, { onConflict: "ky,ma_kh,nganh_hang" }).select("*").single();
+      const { data: saved, error } = await D().from("giai_trinh").upsert(rec, { onConflict: "ky,ma_kh,nganh_hang,nhom_gt" }).select("*").single();
       if (error) throw new Error(error.message);
       await D().from("giai_trinh_log").insert({ giai_trinh_id: saved.id, hanh_dong: submit ? "gui" : "luu", noi_dung: rec, nguoi: s.username });
       // Không thấy trọn cặp (vd area manager, cặp có sale team khác) → ẩn số A2–A4 lúc lưu và danh sách sale.
@@ -493,10 +493,12 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       if (!meta || !meta.import_id) return { exists: false };
       const { data: b } = await D().from("import_batch").select("file_name, created_at, created_by").eq("id", meta.import_id).maybeSingle();
       const gts = await fetchAll((a, z) => D().from("giai_trinh")
-        .select("ma_kh, nganh_hang, ten_nv, ten_kh, du_no_qua_han, trang_thai, cap_nhat_luc").eq("ky", ky).order("id").range(a, z));
+        .select("ma_kh, nganh_hang, nhom_gt, ten_nv, ten_kh, du_no_qua_han, trang_thai, cap_nhat_luc").eq("ky", ky).order("id").range(a, z));
       return {
         exists: true, khoa: !!meta.khoa, imported_at: meta.imported_at, imported_by: meta.imported_by,
         file_name: b?.file_name ?? null, doi_chieu: meta.doi_chieu, giai_trinh: gts,
+        // nhóm giải trình theo phân quyền hiện tại (tên sale đã chuẩn hoá → nhóm); tên không có → "nv:<tên>"
+        nhom_by_nv: Object.fromEntries([...cov.entries()].map(([n]) => [n, nhomOf(cov, n)])),
       };
     }
 

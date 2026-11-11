@@ -107,8 +107,17 @@
   }
   const canSee = (p, r) => { const n = norm(r.ten_nv); return p.all || (p.bu && r.bu && p.bu.includes(r.bu)) || p.amNv.has(n) || p.myNv.has(n) || p.approveNv.has(n); };
   const pk = (ma, ng) => String(ma) + "\u0001" + String(ng);
-  // Đơn vị giải trình KH × ngành: AM phụ trách bất kỳ sale nào trong cặp, hoặc sale tự giải trình.
-  const canEditPair = (p, nvs) => p.role === "admin" || p.role === "manager" || [...nvs].some((nv) => p.amNv.has(norm(nv)) || p.selfNv.has(norm(nv)));
+  const uk = (ma, ng, nhom) => pk(ma, ng) + "\u0001" + String(nhom || "");
+  // Nhóm giải trình: "am:<username>" theo area manager phụ trách, không thì "nv:<tên sale>" (giống debt-api)
+  const amUsers = () => Object.values(USERS).filter((x) => x.role === "area_manager");
+  function nhomOf(nv) {
+    const n = norm(nv);
+    const am = amUsers().map((x) => x.username).sort().find((un) => perm(USERS[un]).p.amNv.has(n));
+    return am ? "am:" + am : "nv:" + n;
+  }
+  const canEditNhom = (p, me, nhom) => p.role === "admin" || p.role === "manager"
+    || (nhom.startsWith("am:") && p.role === "area_manager" && nhom.slice(3) === me)
+    || (nhom.startsWith("nv:") && p.selfNv.has(nhom.slice(3)));
   const canEdit = (p, nv) => p.role === "admin" || p.role === "manager" || p.amNv.has(norm(nv)) || p.selfNv.has(norm(nv));
   const canApprove = (p, nv) => p.approveAll || p.approveNv.has(norm(nv));
 
@@ -147,26 +156,28 @@
       case "get_ky": {
         const meta = kyRow(p.ky); if (!meta) err("not_found");
         const kys = [p.ky, meta.ky_truoc];
-        const all = agg((S.cong_no[meta.import_id] || []).filter((r) => kys.includes(r.ky)));
-        const pairNv = new Map();
-        for (const r of all) { const k = pk(r.ma_kh, r.nganh_hang); if (!pairNv.has(k)) pairNv.set(k, new Set()); pairNv.get(k).add(r.ten_nv); }
-        const seeRow = (r) => canSee(P, r); // chỉ dòng của sale trong phạm vi (AM không thấy team khác)
-        const aggV = all.filter(seeRow);
-        const vis = new Set(aggV.map((r) => pk(r.ma_kh, r.nganh_hang)));
+        const cache = new Map(); const nh = (nv) => { if (!cache.has(nv)) cache.set(nv, nhomOf(nv)); return cache.get(nv); };
+        const all = agg((S.cong_no[meta.import_id] || []).filter((r) => kys.includes(r.ky))).map((r) => ({ ...r, nhom_gt: nh(r.ten_nv) }));
+        const aggV = all.filter((r) => canSee(P, r));
+        const ukr = (r) => uk(r.ma_kh, r.nganh_hang, r.nhom_gt);
+        const unitNhom = new Map(aggV.map((r) => [ukr(r), r.nhom_gt]));
+        const label = {};
+        for (const nhom of new Set(unitNhom.values())) label[nhom] = nhom.startsWith("am:") ? (USERS[nhom.slice(3)] || {}).ho_ten || nhom.slice(3) : (all.find((r) => r.nhom_gt === nhom) || {}).ten_nv || nhom.slice(3);
         return {
           ok: true, meta: P.all ? meta : { ...meta, bien_dong: null, doi_chieu: null },
           agg: aggV,
           hang_vay: (S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r)),
-          thu_tien: (S.thu_tien[meta.import_id] || []).filter(seeRow),
-          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && vis.has(pk(g.ma_kh, g.nganh_hang))).map((g) => {
-            const k = pk(g.ma_kh, g.nganh_hang);
-            const rows = all.filter((r) => pk(r.ma_kh, r.nganh_hang) === k);
+          thu_tien: (S.thu_tien[meta.import_id] || []).map((r) => ({ ...r, nhom_gt: nh(r.ten_nv) })).filter((r) => canSee(P, r)),
+          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && unitNhom.has(uk(g.ma_kh, g.nganh_hang, g.nhom_gt))).map((g) => {
+            const k = uk(g.ma_kh, g.nganh_hang, g.nhom_gt);
+            const rows = all.filter((r) => ukr(r) === k);
             const full = P.all || rows.every((r) => canSee(P, r));
             const qh = rows.filter((r) => r.ky === p.ky && NHOM.includes(r.nhom_no)).reduce((t, r) => t + r.con_no, 0);
             const cap = g.ky === p.ky && g.du_no_qua_han != null && Math.abs(qh - g.du_no_qua_han) > Math.max(10e6, 0.1 * Math.abs(g.du_no_qua_han));
             return full ? { ...g, _can_cap_nhat: cap } : { ...g, du_no_qua_han: null, ten_nv: null, _can_cap_nhat: cap };
           }),
-          can_edit_keys: P.role === "admin" || P.role === "manager" ? null : [...vis].filter((k) => canEditPair(P, pairNv.get(k) || [])),
+          can_edit_keys: P.role === "admin" || P.role === "manager" ? null : [...unitNhom.entries()].filter(([, nhom]) => canEditNhom(P, u.username, nhom)).map(([k]) => k),
+          nhom_label: label,
           phe_duyet: PHE_DUYET,
           ps_dir: [...new Set([...aggV, ...(S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r))].map((r) => r.ten_nv))].map((nv) => {
             const d = dir().find((x) => norm(x.ten_ps) === norm(nv));
@@ -176,27 +187,29 @@
       }
       case "get_kh": {
         const meta = kyRow(p.ky); if (!meta) err("not_found");
-        const rows = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && NHOM.includes(r.nhom_no))
+        const rows = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && NHOM.includes(r.nhom_no) && nhomOf(r.ten_nv) === p.nhom_gt)
           .sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
-        const full = P.all || rows.every((r) => canSee(P, r));
-        const hd = full ? rows : rows.filter((r) => canSee(P, r));
+        const hd = P.all ? rows : rows.filter((r) => canSee(P, r));
         if (!hd.length) err("forbidden");
-        const hist = S.giai_trinh.filter((g) => g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang).sort((a, b) => b.ky.localeCompare(a.ky));
+        const full = hd.length === rows.length;
+        const hist = S.giai_trinh.filter((g) => g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang && g.nhom_gt === p.nhom_gt).sort((a, b) => b.ky.localeCompare(a.ky))
+          .map((g) => (full ? g : { ...g, du_no_qua_han: null, ten_nv: null }));
         const ids = hist.map((h) => h.id);
-        return { ok: true, hoa_don: hd, lich_su: hist, log: S.log.filter((l) => ids.includes(l.giai_trinh_id)).sort((a, b) => b.luc.localeCompare(a.luc)) };
+        return { ok: true, hoa_don: hd, lich_su: hist, log: S.log.filter((l) => ids.includes(l.giai_trinh_id)).sort((a, b) => b.luc.localeCompare(a.luc)).map((l) => (full ? l : { ...l, noi_dung: null })) };
       }
       case "save_gt": {
         const meta = kyRow(p.ky); if (!meta) err("not_found"); if (meta.khoa) err("ky_da_khoa");
-        const rowsAll = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru);
+        const rowsAll = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && nhomOf(r.ten_nv) === p.nhom_gt);
+        if (!rowsAll.length) err("not_found");
         const nvs = [...new Set(rowsAll.map((r) => r.ten_nv))].sort();
-        if (!canEditPair(P, nvs)) err("forbidden");
-        let cur = S.giai_trinh.find((g) => g.ky === p.ky && g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang);
+        if (!canEditNhom(P, u.username, p.nhom_gt)) err("forbidden");
+        let cur = S.giai_trinh.find((g) => g.ky === p.ky && g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang && g.nhom_gt === p.nhom_gt);
         if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) err("da_gui_khong_sua");
         if (!PHE_DUYET) p = { ...p, submit: true };
         const qh = rowsAll.filter((r) => NHOM.includes(r.nhom_no));
         const f = p.fields || {};
         const rec = {
-          ky: p.ky, ma_kh: p.ma_kh, nganh_hang: p.nganh_hang, ten_nv: nvs.join(", "), ten_kh: f.ten_kh || (rowsAll[0] && rowsAll[0].ten_kh) || null,
+          ky: p.ky, ma_kh: p.ma_kh, nganh_hang: p.nganh_hang, nhom_gt: p.nhom_gt, ten_nv: nvs.join(", "), ten_kh: f.ten_kh || (rowsAll[0] && rowsAll[0].ten_kh) || null,
           du_no_qua_han: qh.reduce((t, r) => t + r.con_no, 0),
           ke_hoach: f.ke_hoach || null, thang_du_kien: /^\d{4}-(0[1-9]|1[0-2])$/.test(f.thang_du_kien || "") ? f.thang_du_kien : null,
           trang_thai: p.submit ? "cho_duyet" : "nhap", nguoi_cap_nhat: u.username, cap_nhat_luc: now(),
@@ -232,7 +245,8 @@
         const k = S.ky[p.ky];
         if (!k || !k.import_id) return { ok: true, exists: false };
         return { ok: true, exists: true, khoa: !!k.khoa, imported_at: k.imported_at, imported_by: k.imported_by, file_name: k.file_name || null,
-          doi_chieu: k.doi_chieu, giai_trinh: S.giai_trinh.filter((g) => g.ky === p.ky) };
+          doi_chieu: k.doi_chieu, giai_trinh: S.giai_trinh.filter((g) => g.ky === p.ky),
+          nhom_by_nv: Object.fromEntries(dir().map((d) => [norm(d.ten_ps), nhomOf(d.ten_ps)])) };
       }
       case "import_begin": {
         if (!P.canImport) err("forbidden");
