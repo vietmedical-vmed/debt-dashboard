@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Công nợ Khối Ngoại khoa</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Palette chuẩn org (khớp sale-target, order, kpi, ccdc): accent xanh #1877f2
+  tailwind.config = { theme: { extend: { colors: {
+    slate:   {50:'#f0f2f5',100:'#e4e6eb',200:'#dadde1',300:'#ccd0d5',400:'#8a8d91',500:'#65676b',600:'#4b4f56',700:'#3a3b3c',800:'#242526',900:'#18191a'},
+    emerald: {50:'#e7f3ff',100:'#cfe4ff',200:'#a8c8ff',300:'#7aa7fb',400:'#4a90f2',500:'#1877f2',600:'#166fe5',700:'#0c5dc7',800:'#0a4fa8',900:'#0a3a7a'},
+    blue:    {50:'#e7f3ff',100:'#cfe4ff',200:'#a8c8ff',300:'#7aa7fb',400:'#4a90f2',500:'#1877f2',600:'#166fe5',700:'#0c5dc7',800:'#0a4fa8',900:'#0a3a7a'},
+    sky:     {50:'#e7f3ff',100:'#cfe4ff',200:'#a8c8ff',300:'#7aa7fb',400:'#4a90f2',500:'#1877f2',600:'#166fe5',700:'#0c5dc7',800:'#0a4fa8',900:'#0a3a7a'},
+    red:     {50:'#fdecee',100:'#fad3d6',200:'#f5aab0',300:'#ef7d85',400:'#f9525c',500:'#fa383e',600:'#e41e3f',700:'#c81f3d',800:'#9f1830',900:'#7a1225'}
+  }}}};
+</script>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; background: #f0f2f5; color: #18191a; }
+  #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #f0f2f5; z-index: 100; }
+  #boot .err { color: #fa383e; font-size: 12px; max-width: 400px; margin-top: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input, button, select, textarea { font-family: inherit; }
+  .spinner { width: 32px; height: 32px; border: 3px solid #dadde1; border-top-color: #1877f2; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 12px; }
+  .scroll-shadow::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scroll-shadow::-webkit-scrollbar-thumb { background: #ccd0d5; border-radius: 4px; }
+  .scroll-shadow::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div style="text-align:center;color:#65676b;font-size:13px">
+    <div class="spinner"></div>
+    Đang khởi động…
+    <div id="boot-err" class="err"></div>
+  </div>
+</div>
+<div id="root"></div>
+
+<script>
+  setTimeout(function () {
+    if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+      document.getElementById('boot-err').textContent = 'Không tải được React/ReactDOM từ CDN.';
+    }
+  }, 5000);
+</script>
+
+<!-- Thứ tự quan trọng: config → api → mock → auth → router → ui → importer → data → screens → app.
+     ?v= đổi mỗi lần deploy để trình duyệt không trộn file cũ với file mới. -->
+<script src="assets/js/config.js?v=20261111c"></script>
+<script src="assets/js/api.js?v=20261111c"></script>
+<script src="assets/js/mock.js?v=20261111c"></script>
+<script src="assets/js/auth.js?v=20261111c"></script>
+<script src="assets/js/router.js?v=20261111c"></script>
+<script src="assets/js/ui.js?v=20261111c"></script>
+<script src="assets/js/importer.js?v=20261111c"></script>
+<script src="assets/js/data.js?v=20261111c"></script>
+<script src="assets/js/screens/tong-quan.js?v=20261111c"></script>
+<script src="assets/js/screens/giai-trinh.js?v=20261111c"></script>
+<script src="assets/js/screens/theo-sale.js?v=20261111c"></script>
+<script src="assets/js/screens/hang-vay.js?v=20261111c"></script>
+<script src="assets/js/screens/quan-tri.js?v=20261111c"></script>
+<script src="assets/js/app.js?v=20261111c"></script>
+
+</body>
+</html>

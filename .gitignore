@@ -1,0 +1,19 @@
+# Dữ liệu công nợ thật — KHÔNG push (repo GitHub Pages có thể public)
+*.xlsb
+*.xlsx
+*.xls
+*.csv
+dashboard/_tmp_test/
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+.env
+.env.*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+
+# Cấu hình Claude Code cục bộ
+.claude/
