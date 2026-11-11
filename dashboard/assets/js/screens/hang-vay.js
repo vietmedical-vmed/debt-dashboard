@@ -9,7 +9,7 @@
 
   function exportExcel(rows, ky) {
     const ws = XLSX.utils.json_to_sheet(rows.map((r) => ({
-      "Khách hàng": r.ten_kh, "Sale": r.ten_nv, "Ngành hàng": r.nganh_hang, "Tháng xuất": r.thang_xuat, "Chứng từ": r.chung_tu,
+      "Khách hàng": r.ten_kh, "Tên KH (kế toán)": r.ten_kh_goc, "Sale": r.ten_nv, "Ngành hàng": r.nganh_hang, "Tháng xuất": r.thang_xuat, "Chứng từ": r.chung_tu,
       "Mã hàng": r.ma_hang, "Tên hàng": r.ten_hang, "ĐVT": r.dvt, "SL": r.sl, "Đơn giá vốn": r.don_gia, "Giá trị": r.gia_tri, "Ghi chú": r.ghi_chu,
     })));
     const wb = XLSX.utils.book_new();
@@ -30,7 +30,7 @@
       m.set(k, x);
     }
     const s = UI.deaccent(search.trim());
-    const list = [...m.values()].filter((x) => !s || UI.deaccent(x.ten_kh + " " + x.ten_nv).includes(s)).sort((a, b) => b.tong - a.tong);
+    const list = [...m.values()].filter((x) => !s || UI.deaccent(x.ten_kh + " " + (x.items[0].ten_kh_goc || "") + " " + x.ten_nv).includes(s)).sort((a, b) => b.tong - a.tong);
     const tong = rows.reduce((t, r) => t + r.gia_tri, 0);
     const top7 = list.slice(0, 7).reduce((t, x) => t + x.tong, 0);
 

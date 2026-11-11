@@ -165,7 +165,7 @@
   // ── Xuất Excel danh sách giải trình ───────────────────────────────
   function exportExcel(list, meta) {
     const rows = list.map((k, i) => ({
-      "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Sale": k.ten_nv, "Ngành hàng": k.nganh.join(", "), "Nhóm KH": k.loai_hinh,
+      "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Tên KH (kế toán)": k.ten_kh_goc, "Sale": k.ten_nv, "Ngành hàng": k.nganh.join(", "), "Nhóm KH": k.loai_hinh,
       "A2–A4 (tr)": Math.round(k.qua_han / 1e5) / 10, "A2–A4 kỳ trước (tr)": Math.round(k.prev_qua_han / 1e5) / 10,
       "Tổng dư nợ (tr)": Math.round(k.tong / 1e5) / 10, "Thu trong tháng (tr)": Math.round(k.thu / 1e5) / 10,
       "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label,
@@ -173,7 +173,7 @@
       "Nhận xét quản lý": k.gt ? k.gt.nhan_xet : "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [5, 10, 40, 22, 18, 14, 10, 10, 10, 10, 10, 14, 60, 12, 30].map((w) => ({ wch: w }));
+    ws["!cols"] = [5, 10, 30, 45, 22, 18, 14, 10, 10, 10, 10, 10, 14, 60, 12, 30].map((w) => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Giai trinh " + meta.ky);
     XLSX.writeFile(wb, "Giai_trinh_cong_no_" + meta.ky + ".xlsx");
@@ -194,7 +194,7 @@
     const counts = { all: need.length };
     for (const k of need) counts[k.trang_thai] = (counts[k.trang_thai] || 0) + 1;
     const s = UI.deaccent(search.trim());
-    const list = need.filter((k) => (tt === "all" || k.trang_thai === tt) && (!s || UI.deaccent(k.ten_kh + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
+    const list = need.filter((k) => (tt === "all" || k.trang_thai === tt) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
     const han = D.hanInfo(data.meta.han_giai_trinh);
     const sel = open && khach.find((k) => k.key === open);
 
@@ -220,7 +220,7 @@
               const action = isMine(k) && (k.trang_thai === "chua" || (!D.PHE_DUYET && !(kyMeta && kyMeta.khoa)) || ["nhap", "tra_lai"].includes(k.trang_thai)) ? (k.trang_thai === "chua" ? "Giải trình" : "Sửa")
                 : approveNv.has(k.ten_nv) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
               return h("tr", { key: k.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(k.key) },
-                h("td", { className: T.td }, h("div", { className: "font-medium text-slate-800" }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
+                h("td", { className: T.td }, h("div", { className: "font-medium text-slate-800", title: k.ten_kh_goc }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),
                 h("td", { className: T.td + " whitespace-nowrap" }, k.ten_nv),
                 h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, n))),
                 h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),

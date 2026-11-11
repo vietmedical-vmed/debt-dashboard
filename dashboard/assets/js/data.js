@@ -147,7 +147,7 @@
     const get = (r) => {
       const k = key(r);
       let x = m.get(k);
-      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, ten_kh: r.ten_kh, ten_nv: r.ten_nv, loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
+      if (!x) m.set(k, x = { key: k, ma_kh: r.ma_kh, ten_kh: r.ten_kh, ten_kh_goc: r.ten_kh_goc || r.ten_kh, ten_nv: r.ten_nv, loai_hinh: r.loai_hinh, khu_vuc: r.khu_vuc,
         nganh: new Set(), A0: 0, A1: 0, A2: 0, A3: 0, A4: 0, tong: 0, qua_han: 0, prev_qua_han: 0, prev_tong: 0, max_ngay: 0, so_hd: 0, chua_bbbg: 0, thu: 0 });
       return x;
     };
@@ -155,6 +155,7 @@
       const x = get(r);
       if (r.ky === ky) {
         x.ten_kh = r.ten_kh || x.ten_kh;
+        x.ten_kh_goc = r.ten_kh_goc || x.ten_kh_goc;
         x.nganh.add(r.nganh_hang);
         x[r.nhom_no] = (x[r.nhom_no] || 0) + r.con_no;
         x.tong += r.con_no;

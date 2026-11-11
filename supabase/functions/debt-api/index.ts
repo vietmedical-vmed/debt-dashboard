@@ -246,6 +246,34 @@ const COLS: Record<string, string[]> = {
   thu_tien: ["ky", "ma_kh", "ten_kh", "ten_nv", "nganh_hang", "bu", "so_tien", "so_ct"],
 };
 
+// ─── Tên khách hàng hiển thị = shared.dm_khach_hang.customer_alias (join customer_id = mã KH) ───
+async function aliasById(db: SupabaseClient, ids: string[]) {
+  const out = new Map<string, string>();
+  const list = [...new Set(ids.filter(Boolean))];
+  for (let i = 0; i < list.length; i += 200) {
+    const { data, error } = await db.schema("shared").from("dm_khach_hang")
+      .select("customer_id, customer_alias").in("customer_id", list.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const d of data ?? []) if (d.customer_alias && String(d.customer_alias).trim()) out.set(d.customer_id, String(d.customer_alias).trim());
+  }
+  return out;
+}
+// Hàng vay không có mã KH: khớp tên với dòng công nợ cùng kỳ (→ mã KH), không được thì khớp customer_name.
+async function aliasByName(db: SupabaseClient, names: string[]) {
+  const out = new Map<string, string>();
+  const list = [...new Set(names.filter(Boolean))];
+  for (let i = 0; i < list.length; i += 100) {
+    const { data, error } = await db.schema("shared").from("dm_khach_hang")
+      .select("customer_name, customer_alias").in("customer_name", list.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+    for (const d of data ?? []) {
+      const k = normName(d.customer_name);
+      if (d.customer_alias && String(d.customer_alias).trim() && !out.has(k)) out.set(k, String(d.customer_alias).trim());
+    }
+  }
+  return out;
+}
+
 // ─── Actions ───────────────────────────────────────────────────────────
 async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
   const { perm, dir } = await getPerm(db, s);
@@ -283,6 +311,21 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
           .eq("import_id", meta.import_id).order("id").range(a, b)),
         fetchAll((a, b) => D().from("giai_trinh").select("*").in("ky", kys).order("id").range(a, b)),
       ]);
+      // Đổi tên KH sang customer_alias (giữ tên kế toán ở ten_kh_goc).
+      const alias = await aliasById(db, [...agg.map((r) => r.ma_kh), ...tt.map((r) => r.ma_kh), ...hv.map((r) => r.ma_kh)]);
+      const idByName = new Map<string, string>();
+      for (const r of agg) if (r.ten_kh) idByName.set(normName(r.ten_kh), r.ma_kh);
+      const hvNames = hv.filter((r) => !(r.ma_kh && alias.has(r.ma_kh)) && !alias.has(idByName.get(normName(r.ten_kh)) ?? "")).map((r) => r.ten_kh);
+      const aliasName = hvNames.length ? await aliasByName(db, hvNames) : new Map<string, string>();
+      const withAlias = (r: any) => ({ ...r, ten_kh_goc: r.ten_kh, ten_kh: (r.ma_kh && alias.get(r.ma_kh)) || r.ten_kh });
+      for (let i = 0; i < agg.length; i++) agg[i] = withAlias(agg[i]);
+      for (let i = 0; i < tt.length; i++) tt[i] = withAlias(tt[i]);
+      for (let i = 0; i < gt.length; i++) gt[i] = withAlias(gt[i]);
+      for (let i = 0; i < hv.length; i++) {
+        const r = hv[i];
+        const id = r.ma_kh || idByName.get(normName(r.ten_kh));
+        hv[i] = { ...r, ten_kh_goc: r.ten_kh, ten_kh: (id && alias.get(id)) || aliasName.get(normName(r.ten_kh)) || r.ten_kh };
+      }
       const buByNv = new Map<string, Set<string>>();
       for (const r of agg) { if (!buByNv.has(r.ten_nv)) buByNv.set(r.ten_nv, new Set()); if (r.bu) buByNv.get(r.ten_nv)!.add(r.bu); }
       const seeNv = (nv: string) => canSee(perm, { ten_nv: nv, bu: null }) || [...(buByNv.get(nv) ?? [])].some((b) => canSee(perm, { ten_nv: nv, bu: b }));
