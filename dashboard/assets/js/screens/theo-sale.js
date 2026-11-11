@@ -1,4 +1,4 @@
-// Theo sale: bảng theo từng sale. Kèm tab "Tổng hợp A1–A4" (admin, manager): nhóm nợ × BU/team.
+// Theo sale: bảng theo từng sale. Kèm tab "Tổng hợp A1–A4" (mọi role, theo quyền): nhóm nợ × BU/team.
 (function () {
   const { useState } = React;
   const h = React.createElement;
@@ -253,8 +253,9 @@
 
   R.register("/theo-sale", TheoSale);
 
-  function TongHop({ user }) {
-    if (!user || !["admin", "manager"].includes(user.role)) return h(UI.Empty, null, "Chỉ admin và manager xem được bảng tổng hợp.");
+  // Mọi role đều vào được; debt-api đã lọc số liệu theo quyền (admin/manager: tất cả; area manager: các cặp KH × ngành
+  // có sale mình phụ trách; product_manager: theo ngành; sale: KH của mình). Nút "+ Giải trình" chỉ hiện khi được sửa.
+  function TongHop() {
     return h(D.KyScreen, null, ({ data, f, patchGt, kyMeta }) => h(Pivot, { data, f, patchGt, kyMeta }));
   }
   R.register("/tong-hop", TongHop);

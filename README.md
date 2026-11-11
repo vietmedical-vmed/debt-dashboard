@@ -30,7 +30,7 @@ Frontend (GitHub Pages)            Backend (Supabase nrfxymnfmjhbsgpipvkb)
 |---|---|---|
 | Tổng quan | Tất cả | KPI, tiến độ giải trình, biến động dư nợ, cơ cấu nhóm nợ / nhóm KH, top 15 KH quá hạn |
 | Giải trình | Area manager, quản lý, sale (xem) | Danh sách KH × sale có nợ A2–A4; popup hóa đơn A2–A4, giải trình + tháng dự kiến thu, duyệt / trả lại, lịch sử |
-| Tổng hợp A1–A4 | Admin, manager | Nhóm nợ A4→A1 × KH, cột BU → team (dm_ps), cột giải trình (đã/chưa, A1 không bắt buộc), chi tiết giải trình, tháng dự kiến thu, xuất Excel |
+| Tổng hợp A1–A4 | Tất cả (số liệu theo quyền) | Nhóm nợ A4→A1 × KH, cột BU → team (dm_ps), cột giải trình (đã/chưa, A1 không bắt buộc), chi tiết giải trình, tháng dự kiến thu, xuất Excel |
 | Theo sale | Tất cả | Dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
 | Hàng vay chưa xuất HĐ | Tất cả | Theo KH × sale, xem chứng từ, xuất Excel |
 | Quản trị | Admin | Nạp file, hạn giải trình, khoá kỳ, xem phân quyền theo dm_ps, gắn tay / người duyệt riêng |
