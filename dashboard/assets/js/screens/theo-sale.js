@@ -56,8 +56,12 @@
     for (const c of colList) { const last = bus[bus.length - 1]; if (last && last.bu === c.bu) last.n++; else bus.push({ bu: c.bu, n: 1 }); }
     // Trạng thái giải trình theo KH × sale (kỳ này)
     const gtMap = new Map(data.giai_trinh.filter((g) => g.ky === ky).map((g) => [g.ma_kh + SEP + g.ten_nv, g]));
+    const khMap = new Map(D.buildKhach(data, f).map((k) => [k.ma_kh + SEP + k.ten_nv, k]));
     const status = (ma, nvs) => {
-      const list = [...nvs].map((nv) => ({ nv, st: D.stOf(gtMap.get(ma + SEP + nv)) }));
+      const list = [...nvs].map((nv) => {
+        const k = khMap.get(ma + SEP + nv);
+        return { nv, st: D.stOf(gtMap.get(ma + SEP + nv)), cap_nhat: !!(k && k.can_cap_nhat) };
+      });
       return { done: list.filter((x) => x.st === D.DONE).length, total: list.length, list };
     };
     const groupsOut = ["A4", "A3", "A2"].filter((n) => groups.has(n)).map((n) => {
@@ -71,7 +75,8 @@
     return { cols: colList, bus, groups: groupsOut, grand, grandTong };
   }
 
-  const gtText = (gt) => (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " sale" : "Chưa giải trình");
+  const gtText = (gt) => (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " sale" : "Chưa giải trình")
+    + (gt.list.some((x) => x.cap_nhat) ? " · cần cập nhật" : "");
 
   function exportPivot(pv, ky) {
     const aoa = [["Nhóm nợ / Khách hàng", ...pv.cols.map((c) => c.bu + " · " + c.team), "Tổng", "Giải trình"]];
@@ -95,7 +100,8 @@
     const GtCell = ({ gt }) => {
       const title = gt.list.map((x) => x.nv + ": " + D.TRANG_THAI[x.st].label).join("\n");
       const ok = gt.done === gt.total;
-      return h("span", { title, className: "font-semibold " + (ok ? "text-green-700" : "text-red-600") }, (ok ? "✓ " : gt.done ? "" : "✗ ") + gtText(gt));
+      const warn = gt.list.some((x) => x.cap_nhat);
+      return h("span", { title, className: "font-semibold " + (warn ? "text-amber-700" : ok ? "text-green-700" : "text-red-600") }, (ok ? "✓ " : gt.done ? "" : "✗ ") + gtText(gt));
     };
     const border = (i) => (i === 0 || pv.cols[i - 1].bu !== pv.cols[i].bu ? " border-l border-slate-200" : "");
     const openKh = (x) => R.navigate("/giai-trinh", { ky: data.meta.ky, q: x.ten_kh });

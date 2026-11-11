@@ -210,8 +210,16 @@
         await save(S);
         return { ok: true, row: cur };
       }
+      case "import_check": {
+        if (!P.canImport) err("forbidden");
+        const k = S.ky[p.ky];
+        if (!k || !k.import_id) return { ok: true, exists: false };
+        return { ok: true, exists: true, khoa: !!k.khoa, imported_at: k.imported_at, imported_by: k.imported_by, file_name: k.file_name || null,
+          doi_chieu: k.doi_chieu, giai_trinh: S.giai_trinh.filter((g) => g.ky === p.ky) };
+      }
       case "import_begin": {
         if (!P.canImport) err("forbidden");
+        if (S.ky[p.ky] && S.ky[p.ky].khoa) err("ky_da_khoa");
         const id = "b" + S.seq++;
         S.batches[id] = { id, ky: p.ky, trang_thai: "dang_nap" };
         S.cong_no[id] = []; S.hang_vay[id] = []; S.thu_tien[id] = [];
@@ -227,6 +235,7 @@
         if (!P.canImport) err("forbidden");
         const b = S.batches[p.import_id]; if (!b) err("batch_khong_hop_le");
         const old = S.ky[b.ky];
+        if (old && old.khoa) err("ky_da_khoa");
         if (old && old.import_id && old.import_id !== b.id) { delete S.cong_no[old.import_id]; delete S.hang_vay[old.import_id]; delete S.thu_tien[old.import_id]; delete S.batches[old.import_id]; }
         b.trang_thai = "xong";
         const m = p.meta || {};

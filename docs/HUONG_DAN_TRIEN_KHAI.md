@@ -52,6 +52,16 @@ Quyền đi theo `shared.dm_ps` (dùng chung với sale-target):
 | Hết hạn | Quản lý | Tab **Theo sale**: ai chưa xong, bao nhiêu KH hẹn thu kỳ trước đã có tiền về. **Xuất Excel** danh sách giải trình để báo cáo. |
 | Chốt | Admin | Quản trị → tick **Khoá** kỳ. Không ai sửa/duyệt được nữa. |
 
+## B2. Nạp lại file cùng kỳ (kế toán sửa số liệu)
+
+1. Quản trị → chọn file mới của kỳ đó. Nếu kỳ đã có dữ liệu, app hiện khung vàng:
+   - bảng **Đang có / File mới / Chênh lệch** (tổng dư nợ, A0–A4, chưa BBBG, hàng vay);
+   - danh sách giải trình **sẽ bị ẩn** và lý do (KH đổi sale, KH hết nợ A2–A4, mã KH không còn trong file);
+   - số giải trình **sẽ cần cập nhật** (A2–A4 lúc lưu lệch > 10% và > 10 triệu so với file mới).
+2. Tick "Tôi đã kiểm tra…" rồi bấm **Thay thế dữ liệu**. Số cũ bị xoá hẳn (muốn quay lại thì nạp lại file cũ). Giải trình, hạn giải trình, trạng thái khoá giữ nguyên.
+3. **Kỳ đã khoá thì không nạp lại được** — bỏ tick "Khoá" ở mục Kỳ báo cáo trước.
+4. Sau khi thay: tab Giải trình lọc **Cần cập nhật** → người giải trình sửa và lưu lại để xác nhận. KH đổi sale hiện "Chưa giải trình" ở dòng sale mới, cần viết lại.
+
 ## C. Thay đổi thường gặp
 
 - **Bắt buộc giải trình cả A1**: sửa `NHOM_GIAI_TRINH` trong `config.js` **và** hằng `QUA_HAN` trong `supabase/functions/debt-api/index.ts`, rồi deploy lại `debt-api`.

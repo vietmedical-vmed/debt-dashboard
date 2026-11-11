@@ -27,6 +27,8 @@
   const STATUS_BG = { chua: "bg-red-500", nhap: "bg-amber-400", tra_lai: "bg-red-300", cho_duyet: "bg-blue-300", da_duyet: "bg-blue-600", da_gt: "bg-blue-600" };
   // Trạng thái giải trình lưu trong DB → trạng thái hiển thị.
   const stOf = (gt) => !gt ? "chua" : PHE_DUYET ? gt.trang_thai : (gt.trang_thai === "nhap" ? "chua" : "da_gt");
+  // Giải trình viết theo số A2–A4 lúc lưu; số hiện tại lệch > 10% và > 10 triệu (vd sau khi nạp lại file) → "Cần cập nhật".
+  const canCapNhat = (luc_luu, hien_tai) => luc_luu != null && Math.abs((hien_tai || 0) - luc_luu) > Math.max(10e6, 0.1 * Math.abs(luc_luu));
 
   // ── Cache theo kỳ; Reload trên header xoá cache ──
   const cache = new Map();
@@ -177,6 +179,7 @@
       x.gt = gtCur.get(x.key) || null;
       x.gt_prev = gtPrev.get(x.key) || null;
       x.trang_thai = stOf(x.gt);
+      x.can_cap_nhat = x.trang_thai !== "chua" && canCapNhat(x.gt && x.gt.du_no_qua_han, x.qua_han);
       x.can_gt = x.qua_han > 0.5; // > 0 đồng (tránh sai số làm tròn)
       out.push(x);
     }
@@ -196,7 +199,7 @@
   };
 
   window.DEBT_DATA = {
-    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, useKyList, useKyData, useFilters, KyScreen, applyFilter, sum, groupSum,
+    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, KyScreen, applyFilter, sum, groupSum,
     buildKhach, hanInfo, StatusBadge, invalidate,
   };
 })();

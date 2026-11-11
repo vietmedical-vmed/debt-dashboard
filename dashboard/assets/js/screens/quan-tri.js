@@ -18,16 +18,21 @@
     const [progress, setProgress] = useState(null);
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
+    const [check, setCheck] = useState(null);     // kết quả import_check của kỳ trong file
+    const [confirmed, setConfirmed] = useState(false);
 
     const onFile = async (e) => {
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
       if (!file) return;
-      setParsed(null); setError(null); setDone(null); setFileName(file.name); setBusy(true); setProgress("Đang đọc file…");
+      setParsed(null); setCheck(null); setConfirmed(false); setError(null); setDone(null); setFileName(file.name); setBusy(true); setProgress("Đang đọc file…");
       await new Promise((r) => setTimeout(r, 30)); // cho UI vẽ trạng thái trước khi đọc (đồng bộ, ~1–3 giây)
       try {
         const wb = XLSX.read(await file.arrayBuffer(), IMP.READ_OPTS);
-        setParsed(IMP.parseWorkbook(wb));
+        const parsedNow = IMP.parseWorkbook(wb);
+        setProgress("Kiểm tra dữ liệu đang có của kỳ " + fmtKyLabel(parsedNow.ky) + "…");
+        setCheck(await api("import_check", { ky: parsedNow.ky }));
+        setParsed(parsedNow);
       } catch (err) { setError(err.message || String(err)); }
       setBusy(false); setProgress(null);
     };
@@ -59,7 +64,7 @@
         });
         D.invalidate();
         setDone("Đã nạp kỳ " + fmtKyLabel(p.ky) + " (" + total.toLocaleString("vi-VN") + " dòng). Giải trình đã nhập trước đó được giữ nguyên.");
-        setParsed(null);
+        setParsed(null); setCheck(null); setConfirmed(false);
         onDone && onDone();
       } catch (err) {
         setError(errorText(err.message));
@@ -101,9 +106,78 @@
               line("Hàng vay chưa xuất HĐ", dc.hang_vay, dc.hang_vay_tinh_lai))),
           parsed.warnings.length > 0 && h("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800" },
             h("b", null, "Cảnh báo:"), h("ul", { className: "ml-4 list-disc" }, parsed.warnings.map((w) => h("li", { key: w }, w)))),
+          check && check.exists && h(ThayThe, { parsed, check, confirmed, setConfirmed }),
           h("div", { className: "flex gap-2" },
-            h("button", { type: "button", disabled: busy, onClick: upload, className: btn.primary }, h(UI.I.Upload, { size: 14 }), "Nạp lên hệ thống"),
-            h("button", { type: "button", disabled: busy, onClick: () => setParsed(null), className: btn.secondary }, "Huỷ")))));
+            h("button", { type: "button", disabled: busy || (check && check.exists && (check.khoa || !confirmed)), onClick: upload, className: btn.primary },
+              h(UI.I.Upload, { size: 14 }), check && check.exists ? "Thay thế dữ liệu " + fmtKyLabel(parsed.ky) : "Nạp lên hệ thống"),
+            h("button", { type: "button", disabled: busy, onClick: () => { setParsed(null); setCheck(null); setConfirmed(false); }, className: btn.secondary }, "Huỷ")))));
+  }
+
+  // Cảnh báo khi kỳ đã có dữ liệu: so số cũ/mới, giải trình sẽ bị ẩn hoặc cần cập nhật.
+  function ThayThe({ parsed, check, confirmed, setConfirmed }) {
+    const NHOM_GT = D.NHOM_GT;
+    const SEP = "\u0001";
+    const cur = parsed.cong_no.filter((r) => r.ky === parsed.ky && !r.loai_tru);
+    const newPair = new Map(), newKhQh = new Set(), newKh = new Set();
+    for (const r of cur) {
+      newKh.add(r.ma_kh);
+      if (!NHOM_GT.includes(r.nhom_no)) continue;
+      newKhQh.add(r.ma_kh);
+      const k = r.ma_kh + SEP + r.ten_nv;
+      newPair.set(k, (newPair.get(k) || 0) + r.con_no);
+    }
+    const saved = (check.giai_trinh || []).filter((g) => D.stOf(g) !== "chua");
+    const an = [], capNhat = [];
+    for (const g of saved) {
+      const k = g.ma_kh + SEP + g.ten_nv;
+      if (!newPair.has(k)) {
+        an.push({ ...g, ly_do: newKhQh.has(g.ma_kh) ? "KH vẫn nợ A2–A4 nhưng đổi sale phụ trách" : newKh.has(g.ma_kh) ? "KH không còn nợ A2–A4" : "Mã KH không còn trong file" });
+      } else if (D.canCapNhat(g.du_no_qua_han, newPair.get(k))) {
+        capNhat.push({ ...g, moi: newPair.get(k) });
+      }
+    }
+    const o = (check.doi_chieu && check.doi_chieu.tinh_lai) || {};
+    const n = parsed.doi_chieu.tinh_lai;
+    const rows = [["Nhóm A0", "A0"], ["Nhóm A1", "A1"], ["Nhóm A2", "A2"], ["Nhóm A3", "A3"], ["Nhóm A4", "A4"], ["Tổng dư nợ", "tong"], ["Chưa có BBBG/ĐCCN (chưa gồm CTTM)", "chua_bbbg"]]
+      .map(([label, key]) => ({ label, old: o[key], neu: n[key] }));
+    rows.push({ label: "Hàng vay chưa xuất HĐ", old: check.doi_chieu && check.doi_chieu.hang_vay_tinh_lai, neu: parsed.doi_chieu.hang_vay_tinh_lai });
+    const f0 = (v) => (v == null ? "—" : Math.round(v).toLocaleString("vi-VN"));
+
+    if (check.khoa) {
+      return h("div", { className: "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800" },
+        h("b", null, "Kỳ " + fmtKyLabel(parsed.ky) + " đã khoá. "), "Muốn nạp lại: bỏ tick \"Khoá\" của kỳ này ở mục 2 bên dưới, rồi chọn lại file.");
+    }
+    return h("div", { className: "flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-[13px] text-amber-900" },
+      h("div", null, h("b", null, "Kỳ " + fmtKyLabel(parsed.ky) + " đã có dữ liệu"),
+        " (nạp " + (check.imported_at ? new Date(check.imported_at).toLocaleString("vi-VN") : "?") + " bởi " + (check.imported_by || "?") + (check.file_name ? ", file \"" + check.file_name + "\"" : "") + "). ",
+        "Nạp tiếp sẽ thay toàn bộ số liệu kỳ này (gồm số kỳ trước dùng để so sánh). Số cũ bị xoá, không khôi phục được trừ khi nạp lại file cũ. Giải trình đã nhập được giữ."),
+      h("table", { className: T.table + " max-w-2xl bg-white" },
+        h("thead", null, h("tr", { className: T.headRow }, ["Chỉ tiêu (triệu đồng)", "Đang có", "File mới", "Chênh lệch"].map((x, i) => h("th", { key: x, className: T.th(i > 0) }, x)))),
+        h("tbody", null, rows.map((r) => {
+          const d = r.old == null || r.neu == null ? null : r.neu - r.old;
+          return h("tr", { key: r.label, className: d && Math.abs(d) >= 0.5 ? "bg-amber-50" : "" },
+            h("td", { className: T.td }, r.label), h("td", { className: T.num }, f0(r.old)), h("td", { className: T.num }, f0(r.neu)),
+            h("td", { className: T.num + (d && Math.abs(d) >= 0.5 ? " font-semibold" : " text-slate-400") }, d == null ? "—" : (d > 0 ? "+" : "") + f0(d)));
+        }))),
+      h("div", null, h("b", null, saved.length + " giải trình đã lưu"), " · ",
+        an.length ? h("b", { className: "text-red-700" }, an.length + " sẽ bị ẩn") : "không giải trình nào bị ẩn", " · ",
+        capNhat.length ? h("b", null, capNhat.length + " sẽ được đánh dấu \"Cần cập nhật\"") : "không giải trình nào lệch số đáng kể"),
+      an.length > 0 && h("div", { className: "max-h-48 overflow-y-auto rounded border border-red-200 bg-white" },
+        h("table", { className: T.table },
+          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Sale", "A2–A4 lúc lưu (tr)", "Lý do bị ẩn"].map((x, i) => h("th", { key: x, className: T.th(i === 2) }, x)))),
+          h("tbody", null, an.map((g, i) => h("tr", { key: g.ma_kh + g.ten_nv, className: T.row(i) },
+            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.ten_nv),
+            h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.td + " text-red-700" }, g.ly_do)))))),
+      capNhat.length > 0 && h("details", { className: "rounded border border-amber-200 bg-white px-3 py-2" },
+        h("summary", { className: "cursor-pointer font-medium" }, "Xem " + capNhat.length + " giải trình sẽ cần cập nhật"),
+        h("table", { className: T.table + " mt-2" },
+          h("thead", null, h("tr", { className: T.headRow }, ["Khách hàng", "Sale", "A2–A4 lúc lưu (tr)", "A2–A4 file mới (tr)"].map((x, i) => h("th", { key: x, className: T.th(i >= 2) }, x)))),
+          h("tbody", null, capNhat.map((g, i) => h("tr", { key: g.ma_kh + g.ten_nv, className: T.row(i) },
+            h("td", { className: T.td }, g.ten_kh || g.ma_kh), h("td", { className: T.td }, g.ten_nv),
+            h("td", { className: T.num }, fmtTr(g.du_no_qua_han, 1)), h("td", { className: T.num }, fmtTr(g.moi, 1))))))),
+      h("label", { className: "flex items-center gap-2 font-medium" },
+        h("input", { type: "checkbox", checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }),
+        "Tôi đã kiểm tra, thay thế dữ liệu kỳ " + fmtKyLabel(parsed.ky) + " bằng file mới"));
   }
 
   // ── 2. Kỳ báo cáo: hạn giải trình, khoá ───────────────────────────

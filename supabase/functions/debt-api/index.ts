@@ -435,9 +435,26 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
     }
 
     // ── Nạp file (admin) ──
+    // Trước khi nạp: kỳ đã có dữ liệu chưa, đã khoá chưa, số tổng hiện tại, giải trình đang có.
+    case "import_check": {
+      if (!perm.canImport) throw new HttpError("forbidden", 403);
+      const ky = needKy(p.ky);
+      const meta = await getKyRow(db, ky);
+      if (!meta || !meta.import_id) return { exists: false };
+      const { data: b } = await D().from("import_batch").select("file_name, created_at, created_by").eq("id", meta.import_id).maybeSingle();
+      const gts = await fetchAll((a, z) => D().from("giai_trinh")
+        .select("ma_kh, ten_nv, ten_kh, du_no_qua_han, trang_thai, cap_nhat_luc").eq("ky", ky).order("id").range(a, z));
+      return {
+        exists: true, khoa: !!meta.khoa, imported_at: meta.imported_at, imported_by: meta.imported_by,
+        file_name: b?.file_name ?? null, doi_chieu: meta.doi_chieu, giai_trinh: gts,
+      };
+    }
+
     case "import_begin": {
       if (!perm.canImport) throw new HttpError("forbidden", 403);
       const ky = needKy(p.ky);
+      const cur = await getKyRow(db, ky);
+      if (cur?.khoa) throw new HttpError("ky_da_khoa"); // kỳ đã khoá: phải mở khoá mới nạp lại được
       const { data, error } = await D().from("import_batch")
         .insert({ ky, file_name: str(p.file_name, 300), created_by: s.username }).select("id").single();
       if (error) throw new Error(error.message);
@@ -464,6 +481,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       if (!b || b.trang_thai !== "dang_nap") throw new HttpError("batch_khong_hop_le");
       const m = p.meta || {};
       const old = await getKyRow(db, b.ky);
+      if (old?.khoa) throw new HttpError("ky_da_khoa");
       const { error } = await D().from("ky_bao_cao").upsert({
         ky: b.ky,
         ky_truoc: KY_RE.test(m.ky_truoc || "") ? m.ky_truoc : null,

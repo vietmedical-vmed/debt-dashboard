@@ -57,6 +57,8 @@
         locked && h(UI.Badge, { tone: "grey" }, "Kỳ đã khoá")),
       gt && gt.nhan_xet && h("div", { className: "rounded-md border px-3 py-2 text-[13px] " + (st === "tra_lai" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700") },
         h("b", null, "Nhận xét của quản lý: "), gt.nhan_xet),
+      k.can_cap_nhat && h("div", { className: "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900" },
+        h("b", null, "Cần cập nhật: "), "giải trình viết khi A2–A4 là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
       prefill && editable && h("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800" },
         "Đã điền sẵn giải trình " + fmtKyLabel(k.gt_prev.ky) + ". Cập nhật tiến độ và chọn lại tháng dự kiến thu."),
 
@@ -168,7 +170,7 @@
       "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Tên KH (kế toán)": k.ten_kh_goc, "Sale": k.ten_nv, "Ngành hàng": k.nganh.join(", "), "Nhóm KH": k.loai_hinh,
       "A2–A4 (tr)": Math.round(k.qua_han / 1e5) / 10, "A2–A4 kỳ trước (tr)": Math.round(k.prev_qua_han / 1e5) / 10,
       "Tổng dư nợ (tr)": Math.round(k.tong / 1e5) / 10, "Thu trong tháng (tr)": Math.round(k.thu / 1e5) / 10,
-      "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label,
+      "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label + (k.can_cap_nhat ? " (cần cập nhật)" : ""),
       "Giải trình & kế hoạch xử lý": k.gt ? k.gt.ke_hoach : "", "Tháng dự kiến thu": k.gt ? k.gt.thang_du_kien || "" : "",
       "Nhận xét quản lý": k.gt ? k.gt.nhan_xet : "",
     }));
@@ -192,9 +194,9 @@
     const isMine = (k) => canEditNv == null || canEditNv.includes(k.ten_nv);
 
     const counts = { all: need.length };
-    for (const k of need) counts[k.trang_thai] = (counts[k.trang_thai] || 0) + 1;
+    for (const k of need) { counts[k.trang_thai] = (counts[k.trang_thai] || 0) + 1; if (k.can_cap_nhat) counts.can_cap_nhat = (counts.can_cap_nhat || 0) + 1; }
     const s = UI.deaccent(search.trim());
-    const list = need.filter((k) => (tt === "all" || k.trang_thai === tt) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
+    const list = need.filter((k) => (tt === "all" || k.trang_thai === tt || (tt === "can_cap_nhat" && k.can_cap_nhat)) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
     const han = D.hanInfo(data.meta.han_giai_trinh);
     const sel = open && khach.find((k) => k.key === open);
 
@@ -204,7 +206,7 @@
         kyMeta && kyMeta.khoa && " · Kỳ đã khoá"),
       h("div", { className: "flex flex-wrap items-center gap-2" },
         h(UI.Segmented, { value: tt, onChange: (v) => R.setQuery({ tt: v === "all" ? "" : v }),
-          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...D.STATUS_LIST.map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 }))] }),
+          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...D.STATUS_LIST.map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 })), { key: "can_cap_nhat", label: "Cần cập nhật", count: counts.can_cap_nhat || 0 }] }),
         h("div", { className: "flex-1" }),
         h(UI.SearchInput, { value: search, onChange: setSearch, placeholder: "Tìm khách hàng, sale…", className: "w-64" }),
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
@@ -231,7 +233,8 @@
                 h("td", { className: T.td + " whitespace-nowrap text-[12px]" }, k.gt && k.gt.thang_du_kien
                   ? k.gt.thang_du_kien
                   : h("span", { className: "text-slate-300" }, "—")),
-                h("td", { className: T.td }, h(D.StatusBadge, { st: k.trang_thai })),
+                h("td", { className: T.td }, h("div", { className: "flex flex-col items-start gap-1" }, h(D.StatusBadge, { st: k.trang_thai }),
+                  k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: "A2–A4 lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" }, "Cần cập nhật"))),
                 h("td", { className: T.td }, h("span", { className: "whitespace-nowrap text-[12px] " + (action === "Xem" ? "text-slate-400" : "font-semibold text-blue-600") }, action)));
             }))))),
 
