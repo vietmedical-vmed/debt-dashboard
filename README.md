@@ -42,7 +42,7 @@ Tên NV trong file kế toán = `dm_ps.ten_ps`.
 |---|---|---|---|
 | admin | Tất cả | Mọi KH (thay khi chưa có area manager) | Tất cả · nạp file · cấu hình |
 | manager | Tất cả | — | Tất cả |
-| area_manager | KH của các PS phụ trách: `dm_ps.bu_code` thuộc `users.bu`, `dm_ps.area` thuộc `users.scope` (tên miền; trống thì lấy `users.mien` MB/MN/BOTH) | **Người giải trình chính** cho các PS đó | — |
+| area_manager | KH của các PS phụ trách: `dm_ps.bu_code` thuộc `users.bu`, `dm_ps.area` thuộc `users.scope` (tên miền; trống thì lấy `users.mien` MB/MN/BOTH). Miền nào BU có > 1 team Active (vd CH&CS Miền Nam) thì chỉ team của AM: team trên dòng `dm_ps` của chính AM, hoặc team trùng tên tài khoản (`CHCS 1 Miền Nam` ↔ `CHCS 1 MN`) | **Người giải trình chính** cho các PS đó | — |
 | product_manager | Ngành hàng theo `users.bu` (chcs/thnk/cttm, `all` = tất cả) | — | — |
 | ps (sale) | Chỉ KH của mình: `dm_ps.ps` = `users.scope` (hoặc username), hoặc `dm_ps.ten_ps` = họ tên | — (chỉ xem) | — |
 | purchasing | Không vào được | | |

@@ -88,7 +88,37 @@ function mienOfManager(s: Session): string[] {
   return [...out];
 }
 
-type PsRow = { ps: string | null; ten_ps: string | null; bu: string | null; bu_code: string | null; team: string | null; area: string | null };
+type PsRow = { ps: string | null; ten_ps: string | null; bu: string | null; bu_code: string | null; team: string | null; area: string | null; trang_thai?: string | null };
+
+// "CHCS 1 Miền Nam" / "CHCS 1 MN" → "chcs1mn" để khớp tên tài khoản với tên team.
+const compact = (v: unknown) => normName(v).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d")
+  .replace(/mien bac/g, "mb").replace(/mien nam/g, "mn").replace(/mien trung/g, "mt").replace(/[^a-z0-9]/g, "");
+
+type AmUser = { username: string; scope?: string | null; mien?: string | null; bu?: string | null; ho_ten?: string | null };
+// PS mà 1 area manager phụ trách (tên đã chuẩn hoá):
+//   - dm_ps cùng BU (users.bu) và thuộc miền phụ trách (users.scope / users.mien);
+//   - nếu trong miền đó BU có > 1 team đang Active (vd CH&CS Miền Nam: CHCS 1 MN, CHCS 2 MN) thì chỉ lấy team của AM:
+//     team trên dòng dm_ps của chính AM, nếu không có thì team trùng tên tài khoản (vd "CHCS 1 Miền Nam" ↔ "CHCS 1 MN").
+//     Không xác định được team → không phụ trách PS nào ở miền đó (màn Quản trị báo "Chưa có area manager").
+function managedPs(dir: PsRow[], u: AmUser): Set<string> {
+  const bus = String(u.bu || "").split(/[,;|]/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const own = psOfUser(dir, { username: u.username, scope: u.scope, ho_ten: u.ho_ten });
+  const keys = [compact(u.ho_ten), compact(u.username)].filter(Boolean);
+  const out = new Set<string>();
+  for (const m of mienOfManager({ scope: u.scope, mien: u.mien } as Session)) {
+    const rows = dir.filter((p) => (bus.includes("all") || bus.includes(String(p.bu_code || "").toLowerCase()))
+      && String(p.area || "").normalize("NFC").trim() === m);
+    const active = rows.filter((p) => String(p.trang_thai || "").toLowerCase() === "active");
+    const teams = new Set((active.length ? active : rows).map((p) => String(p.team || "")));
+    let allowed: Set<string> | null = null;
+    if (teams.size > 1) {
+      allowed = new Set(own.filter((p) => rows.includes(p)).map((p) => String(p.team || "")));
+      if (!allowed.size) for (const t of teams) if (keys.includes(compact(t))) allowed.add(t);
+    }
+    for (const p of rows) if (p.ten_ps && (!allowed || allowed.has(String(p.team || "")))) out.add(normName(p.ten_ps));
+  }
+  return out;
+}
 // Tài khoản ↔ PS: dm_ps.ps = users.scope (chuẩn sale-target) hoặc = username, hoặc dm_ps.ten_ps = họ tên.
 function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho_ten?: string | null }) {
   const keys = new Set([normName(u.scope), normName(u.username)].filter(Boolean));
@@ -99,7 +129,7 @@ function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho
 async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[]; dir: PsRow[] }> {
   const [{ data, error }, { data: dirData, error: e2 }] = await Promise.all([
     db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet"),
-    db.schema("shared").from("dm_ps").select("ps, ten_ps, bu, bu_code, team, area"),
+    db.schema("shared").from("dm_ps").select("ps, ten_ps, bu, bu_code, team, area, trang_thai"),
   ]);
   if (error) throw new Error(error.message);
   if (e2) throw new Error(e2.message);
@@ -127,12 +157,7 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
     else perm.bu = buList;
   }
   if (role === "area_manager") {
-    const mien = mienOfManager(s);
-    for (const p of dir) {
-      const buOk = buList.includes("all") || buList.includes(String(p.bu_code || "").toLowerCase());
-      const mienOk = mien.includes(String(p.area || "").normalize("NFC").trim());
-      if (buOk && mienOk && p.ten_ps) perm.amNv.add(normName(p.ten_ps));
-    }
+    perm.amNv = managedPs(dir, { username: me, scope: s.scope, mien: s.mien, bu: s.bu, ho_ten: s.ho_ten });
   }
   return { perm, map, dir };
 }
@@ -410,7 +435,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         D().from("sale_map").select("*").order("ten_nv"),
         db.schema("shared").from("users").select("username, ho_va_ten, role, bu, mien, scope, active").order("username"),
         D().from("ky_bao_cao").select("import_id").not("import_id", "is", null).order("ky", { ascending: false }).limit(1),
-        db.schema("shared").from("dm_ps").select("ps, ten_ps, bu_code, area"),
+        db.schema("shared").from("dm_ps").select("ps, ten_ps, bu, bu_code, team, area, trang_thai"),
       ]);
       const users = (usersRaw ?? []).filter((u: any) => u.active !== false);
       const dir = (psDir ?? []) as PsRow[];
@@ -424,12 +449,8 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       for (const u of users as any[]) {
         const role = String(u.role || "").toLowerCase();
         if (role === "area_manager") {
-          const mien = mienOfManager({ scope: u.scope, mien: u.mien } as Session);
-          const bus = String(u.bu || "").split(/[,;|]/).map((x: string) => x.trim().toLowerCase()).filter(Boolean);
-          for (const p0 of dir) {
-            if (!p0.ten_ps) continue;
-            const buOk = bus.includes("all") || bus.includes(String(p0.bu_code || "").toLowerCase());
-            if (buOk && mien.includes(String(p0.area || "").normalize("NFC").trim())) auto[normName(p0.ten_ps)].am.push(u.username);
+          for (const k of managedPs(dir, { username: u.username, scope: u.scope, mien: u.mien, bu: u.bu, ho_ten: u.ho_va_ten })) {
+            if (auto[k]) auto[k].am.push(u.username);
           }
         } else {
           for (const p0 of psOfUser(dir, { username: u.username, scope: u.scope, ho_ten: u.ho_va_ten })) {
