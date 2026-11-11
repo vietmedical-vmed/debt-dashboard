@@ -14,4 +14,7 @@ window.DEBT_CONFIG = {
   // Nhóm nợ bắt buộc giải trình.
   NHOM_GIAI_TRINH: ["A2", "A3", "A4"],
 
+  // Luồng phê duyệt: tạm tắt — chỉ còn "Chưa / Đã giải trình". Bật lại phải đổi cả PHE_DUYET trong debt-api.
+  PHE_DUYET: false,
+
 };

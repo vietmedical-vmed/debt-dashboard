@@ -30,7 +30,7 @@ Frontend (GitHub Pages)            Backend (Supabase nrfxymnfmjhbsgpipvkb)
 |---|---|---|
 | Tổng quan | Tất cả | KPI, tiến độ giải trình, biến động dư nợ, cơ cấu nhóm nợ / nhóm KH, top 15 KH quá hạn |
 | Giải trình | Area manager, quản lý, sale (xem) | Danh sách KH × sale có nợ A2–A4; popup hóa đơn A2–A4, giải trình + tháng dự kiến thu, duyệt / trả lại, lịch sử |
-| Theo sale | Quản lý | Dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về |
+| Theo sale | Quản lý | Admin/manager: bảng tổng hợp nợ A2–A4 theo nhóm nợ × BU → team (dm_ps) kèm cột đã/chưa giải trình, xuất Excel. Mọi người: dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
 | Hàng vay chưa xuất HĐ | Tất cả | Theo KH × sale, xem chứng từ, xuất Excel |
 | Quản trị | Admin | Nạp file, hạn giải trình, khoá kỳ, xem phân quyền theo dm_ps, gắn tay / người duyệt riêng |
 
@@ -53,7 +53,8 @@ Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả v
 ## Nội dung giải trình
 
 Mỗi KH × sale có nợ A2–A4: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Popup chỉ hiện hóa đơn A2–A4.
-Luồng: area manager lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
+Luồng phê duyệt **đang tắt** (`PHE_DUYET = false` ở `config.js` và `debt-api`): lưu giải trình = "Đã giải trình", area manager sửa lại được tới khi admin khoá kỳ.
+Bật lại thì có: lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
 
 ## Cấu trúc
 

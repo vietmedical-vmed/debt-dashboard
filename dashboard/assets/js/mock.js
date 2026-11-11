@@ -11,6 +11,7 @@
   if (!window.DEBT_CONFIG.DEMO) return;
   const DB_NAME = "debt-demo", KEY = "state";
   const NHOM = window.DEBT_CONFIG.NHOM_GIAI_TRINH;
+  const PHE_DUYET = !!window.DEBT_CONFIG.PHE_DUYET;
   const deaccent = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
   const slug = (name) => deaccent(name).replace(/[^a-z0-9]/g, "");
 
@@ -67,9 +68,12 @@
       if (NAM_RE.test(r.khu_vuc || "")) x.nam++; else x.bac++;
       by.set(r.ten_nv, x);
     }
-    return [...by.entries()].map(([n, x]) => ({
-      ps: slug(n), ten_ps: n, bu_code: Object.entries(x.bu).sort((a, b) => b[1] - a[1])[0]?.[0] || null, area: x.nam > x.bac ? "Miền Nam" : "Miền Bắc",
-    }));
+    const BU = { chcs: ["CH&CS", "CHCS"], cttm: ["CTTM & CTUT", "CTTM"], thnk: ["THNS & CSVT", "NSCT"] };
+    return [...by.entries()].map(([n, x]) => {
+      const bu = Object.entries(x.bu).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      const area = x.nam > x.bac ? "Miền Nam" : "Miền Bắc";
+      return { ps: slug(n), ten_ps: n, bu_code: bu, bu: bu ? BU[bu][0] : null, team: bu ? BU[bu][1] + (area === "Miền Nam" ? " MN" : " MB") : null, area };
+    });
   }
 
   const err = (code) => { throw new Error(code); };
@@ -145,7 +149,12 @@
           thu_tien: (S.thu_tien[meta.import_id] || []).filter((r) => canSee(P, r)),
           giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && seeNv(g.ten_nv)).map((g) => ({ ...g, _can_approve: canApprove(P, g.ten_nv) })),
           can_edit_nv: P.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(P, nv)),
-          can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(P, nv)),
+          can_approve_nv: PHE_DUYET ? [...buByNv.keys()].filter((nv) => canApprove(P, nv)) : [],
+          phe_duyet: PHE_DUYET,
+          ps_dir: [...new Set([...all, ...(S.hang_vay[meta.import_id] || [])].filter((r) => canSee(P, r)).map((r) => r.ten_nv))].map((nv) => {
+            const d = dir().find((x) => norm(x.ten_ps) === norm(nv));
+            return { ten_nv: nv, bu: d ? d.bu : null, bu_code: d ? d.bu_code : null, team: d ? d.team : null, area: d ? d.area : null };
+          }),
         };
       }
       case "get_kh": {
@@ -160,7 +169,8 @@
         if (!canEdit(P, p.ten_nv)) err("forbidden");
         const meta = kyRow(p.ky); if (!meta) err("not_found"); if (meta.khoa) err("ky_da_khoa");
         let cur = S.giai_trinh.find((g) => g.ky === p.ky && g.ma_kh === p.ma_kh && g.ten_nv === p.ten_nv);
-        if (cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) err("da_gui_khong_sua");
+        if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) err("da_gui_khong_sua");
+        if (!PHE_DUYET) p = { ...p, submit: true };
         const qh = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.ten_nv === p.ten_nv && !r.loai_tru && NHOM.includes(r.nhom_no));
         const f = p.fields || {};
         const rec = {
@@ -180,6 +190,7 @@
         return { ok: true, row: cur };
       }
       case "review_gt": {
+        if (!PHE_DUYET) err("phe_duyet_tat");
         const cur = S.giai_trinh.find((g) => g.id === Number(p.id)); if (!cur) err("not_found");
         const meta = kyRow(cur.ky); if (meta && meta.khoa) err("ky_da_khoa");
         const bus = [...new Set((S.cong_no[meta.import_id] || []).filter((r) => r.ten_nv === cur.ten_nv).map((r) => r.bu).filter(Boolean))];

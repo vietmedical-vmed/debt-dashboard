@@ -9,7 +9,7 @@
   const C = window.DEBT_CONFIG;
   const { T, fmtTr, fmtPct, fmtDate, fmtKyLabel, btn } = UI;
 
-  const ACTION_LABEL = { luu: "Lưu nháp", gui: "Gửi duyệt", duyet: "Duyệt", tra_lai: "Trả lại" };
+  const ACTION_LABEL = { luu: "Lưu nháp", gui: window.DEBT_CONFIG.PHE_DUYET ? "Gửi duyệt" : "Lưu giải trình", duyet: "Duyệt", tra_lai: "Trả lại" };
 
   // ── Form giải trình + duyệt ───────────────────────────────────────
   function GiaiTrinhForm({ k, data, kyMeta, onSaved, canEdit, canApprove }) {
@@ -23,7 +23,8 @@
     const [msg, setMsg] = useState(null);
     const st = k.trang_thai;
     const locked = kyMeta && kyMeta.khoa;
-    const editable = canEdit && !locked && ["chua", "nhap", "tra_lai"].includes(st);
+    // Không duyệt: sửa lại được tới khi khoá kỳ.
+    const editable = canEdit && !locked && (!D.PHE_DUYET || ["chua", "nhap", "tra_lai"].includes(st));
     const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
     const save = async (submit) => {
@@ -31,7 +32,7 @@
       try {
         const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, ten_nv: k.ten_nv, submit, fields: { ...form, ten_kh: k.ten_kh } });
         onSaved(r.row);
-        setMsg({ ok: true, text: submit ? "Đã gửi duyệt" : "Đã lưu nháp" });
+        setMsg({ ok: true, text: !D.PHE_DUYET ? "Đã lưu giải trình" : submit ? "Đã gửi duyệt" : "Đã lưu nháp" });
       } catch (e) { setMsg({ ok: false, text: errorText(e.message) }); }
       setBusy(false);
     };
@@ -51,7 +52,7 @@
     return h("div", { className: "flex flex-col gap-3" },
       h("div", { className: "flex flex-wrap items-center gap-2" },
         h(D.StatusBadge, { st }),
-        gt && gt.nguoi_gui && h("span", { className: "text-[11px] text-slate-400" }, "Gửi bởi " + gt.nguoi_gui + " lúc " + new Date(gt.gui_luc).toLocaleString("vi-VN")),
+        gt && gt.nguoi_cap_nhat && st !== "chua" && h("span", { className: "text-[11px] text-slate-400" }, "Cập nhật bởi " + gt.nguoi_cap_nhat + " lúc " + new Date(gt.cap_nhat_luc).toLocaleString("vi-VN")),
         gt && gt.nguoi_duyet && h("span", { className: "text-[11px] text-slate-400" }, "· " + (st === "da_duyet" ? "Duyệt" : "Xử lý") + " bởi " + gt.nguoi_duyet),
         locked && h(UI.Badge, { tone: "grey" }, "Kỳ đã khoá")),
       gt && gt.nhan_xet && h("div", { className: "rounded-md border px-3 py-2 text-[13px] " + (st === "tra_lai" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700") },
@@ -74,11 +75,14 @@
         ? h("div", { className: "flex items-center gap-1.5 text-[13px] text-green-700" }, h(UI.I.Check, { size: 14 }), msg.text)
         : h(UI.ErrorBox, null, msg.text)),
 
-      editable && h("div", { className: "flex flex-wrap justify-end gap-2" },
-        h("button", { type: "button", disabled: busy, onClick: () => save(false), className: btn.secondary }, "Lưu nháp"),
-        h("button", { type: "button", disabled: busy, onClick: () => save(true), className: btn.primary }, h(UI.I.Send, { size: 14 }), "Gửi duyệt")),
+      editable && (D.PHE_DUYET
+        ? h("div", { className: "flex flex-wrap justify-end gap-2" },
+            h("button", { type: "button", disabled: busy, onClick: () => save(false), className: btn.secondary }, "Lưu nháp"),
+            h("button", { type: "button", disabled: busy, onClick: () => save(true), className: btn.primary }, h(UI.I.Send, { size: 14 }), "Gửi duyệt"))
+        : h("div", { className: "flex justify-end" },
+            h("button", { type: "button", disabled: busy, onClick: () => save(true), className: btn.primary }, h(UI.I.Check, { size: 14 }), st === "chua" ? "Lưu giải trình" : "Cập nhật giải trình"))),
 
-      canApprove && !locked && gt && (st === "cho_duyet" || st === "da_duyet") && h("div", { className: "mt-1 flex flex-col gap-2 rounded-md border border-blue-200 bg-blue-50/50 p-3" },
+      D.PHE_DUYET && canApprove && !locked && gt && (st === "cho_duyet" || st === "da_duyet") && h("div", { className: "mt-1 flex flex-col gap-2 rounded-md border border-blue-200 bg-blue-50/50 p-3" },
         h("span", { className: UI.fieldLabel }, st === "cho_duyet" ? "Duyệt giải trình" : "Mở lại giải trình đã duyệt"),
         h("textarea", { rows: 2, value: nhanXet, onChange: (e) => setNhanXet(e.target.value), className: UI.input,
           placeholder: st === "cho_duyet" ? "Nhận xét (bắt buộc khi trả lại)" : "Lý do mở lại (bắt buộc)" }),
@@ -127,7 +131,7 @@
               h("div", { className: "p-4" }, h(GiaiTrinhForm, { k, data, kyMeta, onSaved: saved, canEdit, canApprove }))),
             lichSu.length > 0 && h(UI.Panel, { title: "Giải trình các kỳ trước", className: "mt-4" },
               h("div", { className: "divide-y divide-slate-100" }, lichSu.map((g) => h("div", { key: g.id, className: "px-4 py-2 text-[12px]" },
-                h("div", { className: "mb-1 flex items-center gap-2" }, h("b", null, fmtKyLabel(g.ky)), h(D.StatusBadge, { st: g.trang_thai }),
+                h("div", { className: "mb-1 flex items-center gap-2" }, h("b", null, fmtKyLabel(g.ky)), h(D.StatusBadge, { st: D.stOf(g) }),
                   h("span", { className: "text-slate-400" }, "A2–A4 lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
                 h("div", { className: "whitespace-pre-wrap text-slate-700" }, g.ke_hoach || "—"),
                 h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (g.thang_du_kien || "—")),
@@ -179,7 +183,7 @@
   function List({ data, f, patchGt, kyMeta }) {
     const q = R.useQuery();
     const tt = q.get("tt") || "all";
-    const [search, setSearch] = useState("");
+    const [search, setSearch] = useState(q.get("q") || "");
     const [open, setOpen] = useState(null);
     const khach = useMemo(() => D.buildKhach(data, f), [data, f.nganh.join(), f.nv.join(), f.loai.join()]);
     const need = khach.filter((k) => k.can_gt);
@@ -200,7 +204,7 @@
         kyMeta && kyMeta.khoa && " · Kỳ đã khoá"),
       h("div", { className: "flex flex-wrap items-center gap-2" },
         h(UI.Segmented, { value: tt, onChange: (v) => R.setQuery({ tt: v === "all" ? "" : v }),
-          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...["chua", "nhap", "tra_lai", "cho_duyet", "da_duyet"].map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 }))] }),
+          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...D.STATUS_LIST.map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 }))] }),
         h("div", { className: "flex-1" }),
         h(UI.SearchInput, { value: search, onChange: setSearch, placeholder: "Tìm khách hàng, sale…", className: "w-64" }),
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
@@ -213,7 +217,7 @@
                 .map((x, i) => h("th", { key: i, className: T.th(i >= 3 && i <= 7) }, x)))),
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
-              const action = isMine(k) && ["chua", "nhap", "tra_lai"].includes(k.trang_thai) ? "Giải trình"
+              const action = isMine(k) && (k.trang_thai === "chua" || (!D.PHE_DUYET && !(kyMeta && kyMeta.khoa)) || ["nhap", "tra_lai"].includes(k.trang_thai)) ? (k.trang_thai === "chua" ? "Giải trình" : "Sửa")
                 : approveNv.has(k.ten_nv) && k.trang_thai === "cho_duyet" ? "Duyệt" : "Xem";
               return h("tr", { key: k.key, className: T.row(i) + " cursor-pointer", onClick: () => setOpen(k.key) },
                 h("td", { className: T.td }, h("div", { className: "font-medium text-slate-800" }, k.ten_kh), h("div", { className: "text-[11px] text-slate-400" }, k.ma_kh + " · " + (k.loai_hinh || ""))),

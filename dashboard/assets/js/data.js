@@ -18,7 +18,15 @@
     cho_duyet: { label: "Chờ duyệt", tone: "blue" },
     tra_lai: { label: "Bị trả lại", tone: "red" },
     da_duyet: { label: "Đã duyệt", tone: "green" },
+    da_gt: { label: "Đã giải trình", tone: "green" },
   };
+  const PHE_DUYET = !!window.DEBT_CONFIG.PHE_DUYET;
+  // Danh sách trạng thái hiển thị + trạng thái "xong".
+  const STATUS_LIST = PHE_DUYET ? ["chua", "nhap", "tra_lai", "cho_duyet", "da_duyet"] : ["chua", "da_gt"];
+  const DONE = PHE_DUYET ? "da_duyet" : "da_gt";
+  const STATUS_BG = { chua: "bg-red-500", nhap: "bg-amber-400", tra_lai: "bg-red-300", cho_duyet: "bg-blue-300", da_duyet: "bg-blue-600", da_gt: "bg-blue-600" };
+  // Trạng thái giải trình lưu trong DB → trạng thái hiển thị.
+  const stOf = (gt) => !gt ? "chua" : PHE_DUYET ? gt.trang_thai : (gt.trang_thai === "nhap" ? "chua" : "da_gt");
 
   // ── Cache theo kỳ; Reload trên header xoá cache ──
   const cache = new Map();
@@ -167,7 +175,7 @@
       x.nganh = [...x.nganh];
       x.gt = gtCur.get(x.key) || null;
       x.gt_prev = gtPrev.get(x.key) || null;
-      x.trang_thai = x.gt ? x.gt.trang_thai : "chua";
+      x.trang_thai = stOf(x.gt);
       x.can_gt = x.qua_han > 0.5; // > 0 đồng (tránh sai số làm tròn)
       out.push(x);
     }
@@ -187,7 +195,7 @@
   };
 
   window.DEBT_DATA = {
-    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, useKyList, useKyData, useFilters, KyScreen, applyFilter, sum, groupSum,
+    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, useKyList, useKyData, useFilters, KyScreen, applyFilter, sum, groupSum,
     buildKhach, hanInfo, StatusBadge, invalidate,
   };
 })();

@@ -88,7 +88,7 @@ function mienOfManager(s: Session): string[] {
   return [...out];
 }
 
-type PsRow = { ps: string | null; ten_ps: string | null; bu_code: string | null; area: string | null };
+type PsRow = { ps: string | null; ten_ps: string | null; bu: string | null; bu_code: string | null; team: string | null; area: string | null };
 // Tài khoản ↔ PS: dm_ps.ps = users.scope (chuẩn sale-target) hoặc = username, hoặc dm_ps.ten_ps = họ tên.
 function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho_ten?: string | null }) {
   const keys = new Set([normName(u.scope), normName(u.username)].filter(Boolean));
@@ -96,10 +96,10 @@ function psOfUser(dir: PsRow[], u: { username: string; scope?: string | null; ho
   return dir.filter((p) => keys.has(normName(p.ps)) || (!!hoTen && normName(p.ten_ps) === hoTen));
 }
 
-async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[] }> {
+async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; map: SaleMap[]; dir: PsRow[] }> {
   const [{ data, error }, { data: dirData, error: e2 }] = await Promise.all([
     db.schema("app_debt").from("sale_map").select("ten_nv, username, nguoi_duyet"),
-    db.schema("shared").from("dm_ps").select("ps, ten_ps, bu_code, area"),
+    db.schema("shared").from("dm_ps").select("ps, ten_ps, bu, bu_code, team, area"),
   ]);
   if (error) throw new Error(error.message);
   if (e2) throw new Error(e2.message);
@@ -134,7 +134,7 @@ async function getPerm(db: SupabaseClient, s: Session): Promise<{ perm: Perm; ma
       if (buOk && mienOk && p.ten_ps) perm.amNv.add(normName(p.ten_ps));
     }
   }
-  return { perm, map };
+  return { perm, map, dir };
 }
 
 function canSee(p: Perm, row: { bu?: string | null; ten_nv: string }) {
@@ -171,6 +171,9 @@ const needKy = (ky: unknown) => { if (typeof ky !== "string" || !KY_RE.test(ky))
 const str = (v: unknown, max = 2000) => (v == null || v === "" ? null : String(v).slice(0, max));
 const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 const QUA_HAN = ["A2", "A3", "A4"];
+// Tạm tắt luồng phê duyệt (2026-11-11): lưu giải trình = "Đã giải trình", sửa lại được tới khi khoá kỳ.
+// Bật lại: đặt true + đổi PHE_DUYET trong dashboard/assets/js/config.js.
+const PHE_DUYET = false;
 
 async function getKyRow(db: SupabaseClient, ky: string) {
   const { data, error } = await db.schema("app_debt").from("ky_bao_cao").select("*").eq("ky", ky).maybeSingle();
@@ -190,7 +193,7 @@ const COLS: Record<string, string[]> = {
 
 // ─── Actions ───────────────────────────────────────────────────────────
 async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
-  const { perm } = await getPerm(db, s);
+  const { perm, dir } = await getPerm(db, s);
   if (perm.noAccess) throw new HttpError("forbidden", 403);
   const D = () => db.schema("app_debt");
 
@@ -238,7 +241,13 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         })),
         // null = sửa được tất cả (admin)
         can_edit_nv: perm.role === "admin" ? null : [...buByNv.keys()].filter((nv) => canEdit(perm, nv)),
-        can_approve_nv: [...buByNv.keys()].filter((nv) => canApprove(perm, nv)),
+        can_approve_nv: PHE_DUYET ? [...buByNv.keys()].filter((nv) => canApprove(perm, nv)) : [],
+        phe_duyet: PHE_DUYET,
+        // BU / team của từng tên NV theo dm_ps (cho bảng tổng hợp theo team)
+        ps_dir: [...new Set([...agg, ...hv].filter((r) => canSee(perm, r)).map((r) => r.ten_nv))].map((nv) => {
+          const d = dir.find((x) => normName(x.ten_ps) === normName(nv));
+          return { ten_nv: nv, bu: d?.bu ?? null, bu_code: d?.bu_code ?? null, team: d?.team ?? null, area: d?.area ?? null };
+        }),
       };
     }
 
@@ -274,13 +283,13 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       if (meta.khoa) throw new HttpError("ky_da_khoa");
 
       const { data: cur } = await D().from("giai_trinh").select("*").eq("ky", ky).eq("ma_kh", ma).eq("ten_nv", nv).maybeSingle();
-      if (cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) throw new HttpError("da_gui_khong_sua");
+      if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) throw new HttpError("da_gui_khong_sua");
 
       const qh = await fetchAll((a, b) => D().from("cong_no").select("con_no, ten_kh")
         .eq("import_id", meta.import_id).eq("ky", ky).eq("ma_kh", ma).eq("ten_nv", nv).eq("loai_tru", false).in("nhom_no", QUA_HAN).order("id").range(a, b));
       const duNo = qh.reduce((t, r) => t + Number(r.con_no || 0), 0);
 
-      const submit = !!p.submit;
+      const submit = PHE_DUYET ? !!p.submit : true; // không duyệt: lưu = đã giải trình
       const f = p.fields || {};
       const rec: Record<string, unknown> = {
         ky, ma_kh: ma, ten_nv: nv,
@@ -306,6 +315,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
 
     // Quản lý duyệt / trả lại.
     case "review_gt": {
+      if (!PHE_DUYET) throw new HttpError("phe_duyet_tat");
       const id = Number(p.id);
       const decision = p.decision === "duyet" ? "da_duyet" : p.decision === "tra_lai" ? "tra_lai" : null;
       if (!id || !decision) throw new HttpError("bad_payload");

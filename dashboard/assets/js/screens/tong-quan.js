@@ -39,13 +39,10 @@
   function TienDo({ khach, meta, f }) {
     const need = khach.filter((k) => k.can_gt);
     const cnt = (st) => need.filter((k) => k.trang_thai === st).length;
-    const done = cnt("da_duyet");
+    const done = cnt(D.DONE);
     const han = D.hanInfo(meta.han_giai_trinh);
-    const items = [
-      { st: "chua", n: cnt("chua") }, { st: "nhap", n: cnt("nhap") }, { st: "tra_lai", n: cnt("tra_lai") },
-      { st: "cho_duyet", n: cnt("cho_duyet") }, { st: "da_duyet", n: done },
-    ];
-    const tone = { chua: "bg-red-500", nhap: "bg-amber-400", tra_lai: "bg-red-300", cho_duyet: "bg-blue-300", da_duyet: "bg-blue-600" };
+    const items = D.STATUS_LIST.map((st) => ({ st, n: cnt(st) }));
+    const tone = D.STATUS_BG;
     return h(UI.Panel, {
       title: "Tiến độ giải trình nợ A2–A4 · " + fmtKyLabel(meta.ky),
       subtitle: need.length + " khách hàng × sale phải giải trình" + (meta.han_giai_trinh ? " · Hạn " + UI.fmtDate(meta.han_giai_trinh) + " (" + han.text + ")" : " · Chưa đặt hạn"),
