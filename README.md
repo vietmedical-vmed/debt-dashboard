@@ -54,7 +54,7 @@ Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả v
 
 ## Nội dung giải trình
 
-Đơn vị giải trình: **kỳ × khách hàng × ngành hàng** (không phân biệt sale) có nợ A2–A4 — mỗi cặp giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp và thấy hóa đơn của mọi sale trong cặp. Popup chỉ hiện hóa đơn A2–A4.
+Đơn vị giải trình: **kỳ × khách hàng × ngành hàng** (không phân biệt sale) có nợ A2–A4 — mỗi cặp giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp, nhưng chỉ thấy tên, số tiền, hóa đơn của sale mình phụ trách (số A2–A4 lúc lưu của cả cặp bị ẩn; cờ "Cần cập nhật" tính ở server). Popup chỉ hiện hóa đơn A2–A4.
 Luồng phê duyệt **đang tắt** (`PHE_DUYET = false` ở `config.js` và `debt-api`): lưu giải trình = "Đã giải trình", area manager sửa lại được tới khi admin khoá kỳ.
 Bật lại thì có: lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
 

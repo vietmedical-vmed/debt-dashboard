@@ -358,16 +358,31 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
         if (!pairNv.has(k)) { pairNv.set(k, new Set()); pairBu.set(k, new Set()); }
         pairNv.get(k)!.add(r.ten_nv); if (r.bu) pairBu.get(k)!.add(r.bu);
       }
-      // Area manager thấy trọn cặp KH × ngành nếu phụ trách ít nhất 1 sale trong cặp.
-      const seeRow = (r: any) => canSee(perm, r) || (perm.amNv.size > 0 && seeFullPair(perm, pairNv.get(pairKey(r.ma_kh, r.nganh_hang)) ?? [], []));
-      const aggV = agg.filter(seeRow);
+      // Mỗi người chỉ thấy dòng của sale trong phạm vi mình (area manager không thấy số / tên sale team khác),
+      // nhưng vẫn giải trình chung 1 lần cho cả cặp KH × ngành.
+      const aggV = agg.filter((r) => canSee(perm, r));
       const visiblePairs = new Set(aggV.map((r) => pairKey(r.ma_kh, r.nganh_hang)));
+      // Cặp thấy trọn (mọi dòng đều trong phạm vi) → được xem số A2–A4 lúc lưu; không thì ẩn số đó.
+      const pairTotal = new Map<string, number>(), pairVis = new Map<string, number>(), qhFull = new Map<string, number>();
+      for (const r of agg) {
+        const k = pairKey(r.ma_kh, r.nganh_hang);
+        pairTotal.set(k, (pairTotal.get(k) ?? 0) + 1);
+        if (r.ky === ky && QUA_HAN.includes(r.nhom_no)) qhFull.set(k, (qhFull.get(k) ?? 0) + Number(r.con_no || 0));
+      }
+      for (const r of aggV) { const k = pairKey(r.ma_kh, r.nganh_hang); pairVis.set(k, (pairVis.get(k) ?? 0) + 1); }
+      const fullPair = (k: string) => perm.all || (pairVis.get(k) ?? 0) === (pairTotal.get(k) ?? 0);
+      // "Cần cập nhật" tính trên số trọn cặp ở server (số lệch > 10% và > 10 triệu so với lúc lưu).
+      const canCapNhat = (r: any) => r.ky === ky && r.trang_thai !== "nhap" && r.du_no_qua_han != null
+        && Math.abs((qhFull.get(pairKey(r.ma_kh, r.nganh_hang)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)));
       return {
         meta: perm.all ? meta : { ...meta, bien_dong: null, doi_chieu: null },
         agg: aggV,
         hang_vay: hv.filter((r) => canSee(perm, r)),
-        thu_tien: tt.filter(seeRow),
-        giai_trinh: gt.filter((r) => visiblePairs.has(pairKey(r.ma_kh, r.nganh_hang))),
+        thu_tien: tt.filter((r) => canSee(perm, r)),
+        giai_trinh: gt.filter((r) => visiblePairs.has(pairKey(r.ma_kh, r.nganh_hang))).map((r) => {
+          const full = fullPair(pairKey(r.ma_kh, r.nganh_hang));
+          return { ...r, _can_cap_nhat: canCapNhat(r), du_no_qua_han: full ? r.du_no_qua_han : null, ten_nv: full ? r.ten_nv : null };
+        }),
         // null = sửa được tất cả (admin, manager); còn lại: danh sách khoá cặp "ma_kh\u0001ngành"
         can_edit_keys: perm.role === "admin" || perm.role === "manager" ? null
           : [...visiblePairs].filter((k) => canEditPair(perm, pairNv.get(k) ?? [])),
@@ -389,8 +404,8 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const rows = await pairRows(db, meta.import_id, ky, ma, nganh,
         "ten_nv, so_hd, ngay_hd, ngay_den_han, so_ngay_qua_han, nhom_no, nganh_hang, bu, gia_tri_hd, da_thanh_toan, con_no, so_hop_dong, bbbg, hop_dong_ban, khong_chung_tu, ghi_chu, note", true);
       const nvs = [...new Set(rows.map((r) => r.ten_nv))];
-      const full = seeFullPair(perm, nvs, rows.map((r) => r.bu));
-      const visible = full ? rows : rows.filter((r) => canSee(perm, r));
+      const visible = perm.all ? rows : rows.filter((r) => canSee(perm, r));
+      const full = visible.length === rows.length;
       if (!visible.length) throw new HttpError("forbidden", 403);
       const { data: hist, error } = await D().from("giai_trinh").select("*").eq("ma_kh", ma).eq("nganh_hang", nganh).order("ky", { ascending: false });
       if (error) throw new Error(error.message);
@@ -398,7 +413,8 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const { data: logs } = ids.length
         ? await D().from("giai_trinh_log").select("*").in("giai_trinh_id", ids).order("luc", { ascending: false })
         : { data: [] };
-      return { hoa_don: visible, lich_su: hist ?? [], log: logs ?? [] };
+      const histOut = (hist ?? []).map((g) => (full ? g : { ...g, du_no_qua_han: null, ten_nv: null }));
+      return { hoa_don: visible, lich_su: histOut, log: (logs ?? []).map((l) => (full ? l : { ...l, noi_dung: null })) };
     }
 
     // Area manager (hoặc admin) lưu nháp / gửi duyệt.
@@ -440,7 +456,9 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const { data: saved, error } = await D().from("giai_trinh").upsert(rec, { onConflict: "ky,ma_kh,nganh_hang" }).select("*").single();
       if (error) throw new Error(error.message);
       await D().from("giai_trinh_log").insert({ giai_trinh_id: saved.id, hanh_dong: submit ? "gui" : "luu", noi_dung: rec, nguoi: s.username });
-      return { row: saved };
+      // Không thấy trọn cặp (vd area manager, cặp có sale team khác) → ẩn số A2–A4 lúc lưu và danh sách sale.
+      const fullSave = perm.all || all.every((r) => canSee(perm, { ten_nv: r.ten_nv, bu: null }));
+      return { row: fullSave ? { ...saved, _can_cap_nhat: false } : { ...saved, du_no_qua_han: null, ten_nv: null, _can_cap_nhat: false } };
     }
 
     // Quản lý duyệt / trả lại.

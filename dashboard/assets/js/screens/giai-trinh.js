@@ -58,7 +58,9 @@
       gt && gt.nhan_xet && h("div", { className: "rounded-md border px-3 py-2 text-[13px] " + (st === "tra_lai" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700") },
         h("b", null, "Nhận xét của quản lý: "), gt.nhan_xet),
       k.can_cap_nhat && h("div", { className: "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900" },
-        h("b", null, "Cần cập nhật: "), "giải trình viết khi A2–A4 là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
+        h("b", null, "Cần cập nhật: "), (k.gt.du_no_qua_han != null
+          ? "giải trình viết khi A2–A4 là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr"
+          : "số A2–A4 đã thay đổi đáng kể so với lúc lưu giải trình") + " (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
       prefill && editable && h("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800" },
         "Đã điền sẵn giải trình " + fmtKyLabel(k.gt_prev.ky) + ". Cập nhật tiến độ và chọn lại tháng dự kiến thu."),
 
@@ -134,7 +136,7 @@
             lichSu.length > 0 && h(UI.Panel, { title: "Giải trình các kỳ trước", className: "mt-4" },
               h("div", { className: "divide-y divide-slate-100" }, lichSu.map((g) => h("div", { key: g.id, className: "px-4 py-2 text-[12px]" },
                 h("div", { className: "mb-1 flex items-center gap-2" }, h("b", null, fmtKyLabel(g.ky)), h(D.StatusBadge, { st: D.stOf(g) }),
-                  h("span", { className: "text-slate-400" }, "A2–A4 lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
+                  g.du_no_qua_han != null && h("span", { className: "text-slate-400" }, "A2–A4 lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
                 h("div", { className: "whitespace-pre-wrap text-slate-700" }, g.ke_hoach || "—"),
                 h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (g.thang_du_kien || "—")),
                 g.nhan_xet && h("div", { className: "text-slate-500" }, h("b", null, "Nhận xét QL: "), g.nhan_xet)))))),
@@ -234,7 +236,7 @@
                   ? k.gt.thang_du_kien
                   : h("span", { className: "text-slate-300" }, "—")),
                 h("td", { className: T.td }, h("div", { className: "flex flex-col items-start gap-1" }, h(D.StatusBadge, { st: k.trang_thai }),
-                  k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: "A2–A4 lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" }, "Cần cập nhật"))),
+                  k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: k.gt.du_no_qua_han != null ? "A2–A4 lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" : "Số A2–A4 đã thay đổi so với lúc lưu" }, "Cần cập nhật"))),
                 h("td", { className: T.td }, h("span", { className: "whitespace-nowrap text-[12px] " + (action === "Xem" ? "text-slate-400" : "font-semibold text-blue-600") }, action)));
             }))))),
 

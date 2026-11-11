@@ -150,7 +150,7 @@
         const all = agg((S.cong_no[meta.import_id] || []).filter((r) => kys.includes(r.ky)));
         const pairNv = new Map();
         for (const r of all) { const k = pk(r.ma_kh, r.nganh_hang); if (!pairNv.has(k)) pairNv.set(k, new Set()); pairNv.get(k).add(r.ten_nv); }
-        const seeRow = (r) => canSee(P, r) || [...(pairNv.get(pk(r.ma_kh, r.nganh_hang)) || [])].some((nv) => P.amNv.has(norm(nv)));
+        const seeRow = (r) => canSee(P, r); // chỉ dòng của sale trong phạm vi (AM không thấy team khác)
         const aggV = all.filter(seeRow);
         const vis = new Set(aggV.map((r) => pk(r.ma_kh, r.nganh_hang)));
         return {
@@ -158,7 +158,14 @@
           agg: aggV,
           hang_vay: (S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r)),
           thu_tien: (S.thu_tien[meta.import_id] || []).filter(seeRow),
-          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && vis.has(pk(g.ma_kh, g.nganh_hang))),
+          giai_trinh: S.giai_trinh.filter((g) => kys.includes(g.ky) && vis.has(pk(g.ma_kh, g.nganh_hang))).map((g) => {
+            const k = pk(g.ma_kh, g.nganh_hang);
+            const rows = all.filter((r) => pk(r.ma_kh, r.nganh_hang) === k);
+            const full = P.all || rows.every((r) => canSee(P, r));
+            const qh = rows.filter((r) => r.ky === p.ky && NHOM.includes(r.nhom_no)).reduce((t, r) => t + r.con_no, 0);
+            const cap = g.ky === p.ky && g.du_no_qua_han != null && Math.abs(qh - g.du_no_qua_han) > Math.max(10e6, 0.1 * Math.abs(g.du_no_qua_han));
+            return full ? { ...g, _can_cap_nhat: cap } : { ...g, du_no_qua_han: null, ten_nv: null, _can_cap_nhat: cap };
+          }),
           can_edit_keys: P.role === "admin" || P.role === "manager" ? null : [...vis].filter((k) => canEditPair(P, pairNv.get(k) || [])),
           phe_duyet: PHE_DUYET,
           ps_dir: [...new Set([...aggV, ...(S.hang_vay[meta.import_id] || []).filter((r) => canSee(P, r))].map((r) => r.ten_nv))].map((nv) => {
@@ -171,7 +178,7 @@
         const meta = kyRow(p.ky); if (!meta) err("not_found");
         const rows = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && NHOM.includes(r.nhom_no))
           .sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
-        const full = P.all || rows.some((r) => P.amNv.has(norm(r.ten_nv)) || (P.bu && P.bu.includes(r.bu)));
+        const full = P.all || rows.every((r) => canSee(P, r));
         const hd = full ? rows : rows.filter((r) => canSee(P, r));
         if (!hd.length) err("forbidden");
         const hist = S.giai_trinh.filter((g) => g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang).sort((a, b) => b.ky.localeCompare(a.ky));
@@ -202,7 +209,8 @@
         if (cur) Object.assign(cur, rec); else S.giai_trinh.push(cur = { id: S.seq++, nhan_xet: null, nguoi_duyet: null, duyet_luc: null, ...rec });
         S.log.push({ id: S.seq++, giai_trinh_id: cur.id, hanh_dong: p.submit ? "gui" : "luu", noi_dung: rec, nguoi: u.username, luc: now() });
         await save(S);
-        return { ok: true, row: cur };
+        const fullSave = P.all || rowsAll.every((r) => canSee(P, r));
+        return { ok: true, row: fullSave ? { ...cur, _can_cap_nhat: false } : { ...cur, du_no_qua_han: null, ten_nv: null, _can_cap_nhat: false } };
       }
       case "review_gt": {
         if (!PHE_DUYET) err("phe_duyet_tat");

@@ -181,7 +181,8 @@
       x.gt = gtCur.get(x.key) || null;
       x.gt_prev = gtPrev.get(x.key) || null;
       x.trang_thai = stOf(x.gt);
-      x.can_cap_nhat = x.trang_thai !== "chua" && canCapNhat(x.gt && x.gt.du_no_qua_han, x.qua_han);
+      // Server tính cờ trên số trọn cặp (người chỉ thấy 1 phần cặp không có số đó); bản cũ không có thì tự tính.
+      x.can_cap_nhat = x.trang_thai !== "chua" && (x.gt && x.gt._can_cap_nhat !== undefined ? !!x.gt._can_cap_nhat : canCapNhat(x.gt && x.gt.du_no_qua_han, x.qua_han));
       x.can_gt = x.qua_han > 0.5; // > 0 đồng (tránh sai số làm tròn)
       out.push(x);
     }
