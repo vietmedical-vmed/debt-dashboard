@@ -198,7 +198,7 @@
     if (!open) return null;
     return ReactDOM.createPortal(h("div", {
       onClick: () => { if (!busy) onClose(); },
-      className: "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 pt-16",
+      className: "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 pt-6",
     },
       h("div", {
         role: "dialog", "aria-modal": "true", "aria-label": title, onClick: (e) => e.stopPropagation(),

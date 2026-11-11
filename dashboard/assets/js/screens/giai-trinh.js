@@ -114,8 +114,8 @@
     const stat = (label, v, cls = "") => h("div", { className: "rounded-md border border-slate-200 bg-white px-3 py-2" },
       h("div", { className: "text-[10px] uppercase tracking-wide text-slate-400" }, label), h("div", { className: "text-[15px] font-semibold tabular-nums " + cls }, v));
 
-    return h(UI.Modal, { open: true, onClose, width: 1040, title: k.ten_kh + " · " + k.nganh_hang + "  (sale: " + k.ten_nv + ")" },
-      h("div", { className: "flex max-h-[78vh] flex-col gap-4 overflow-y-auto p-4" },
+    return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + k.nganh_hang + "  (sale: " + k.ten_nv + ")" },
+      h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
           stat("Kỳ trước A2–A4", fmtTr(k.prev_qua_han)),
@@ -127,8 +127,8 @@
           " · Thực thu " + fmtKyLabel(data.meta.ky) + ": ", h("b", null, fmtTr(k.thu, 1) + " tr"),
           " · A2–A4 thay đổi: ", h("b", null, (k.qua_han - k.prev_qua_han >= 0 ? "+" : "") + fmtTr(k.qua_han - k.prev_qua_han, 1) + " tr")),
 
-        h("div", { className: "grid gap-4 lg:grid-cols-5" },
-          h("div", { className: "min-w-0 lg:col-span-2" },
+        h("div", { className: "grid gap-4 xl:grid-cols-3" },
+          h("div", { className: "min-w-0 xl:col-span-1" },
             h(UI.Panel, { title: "Giải trình " + fmtKyLabel(data.meta.ky) },
               h("div", { className: "p-4" }, h(GiaiTrinhForm, { k, data, kyMeta, onSaved: saved, canEdit, canApprove }))),
             lichSu.length > 0 && h(UI.Panel, { title: "Giải trình các kỳ trước", className: "mt-4" },
@@ -138,11 +138,11 @@
                 h("div", { className: "whitespace-pre-wrap text-slate-700" }, g.ke_hoach || "—"),
                 h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (g.thang_du_kien || "—")),
                 g.nhan_xet && h("div", { className: "text-slate-500" }, h("b", null, "Nhận xét QL: "), g.nhan_xet)))))),
-          h("div", { className: "min-w-0 lg:col-span-3" },
+          h("div", { className: "min-w-0 xl:col-span-2" },
             h(UI.Panel, { title: "Hóa đơn quá hạn trên mức an toàn (A2–A4)", subtitle: det ? hd.length + " hóa đơn · triệu đồng" : null },
               err ? h("div", { className: "p-4" }, h(UI.ErrorBox, null, err))
                 : !det ? h(UI.LoadingBlock, null)
-                : h("div", { className: "scroll-shadow max-h-[420px] overflow-auto" }, h("table", { className: T.table },
+                : h("div", { className: "scroll-shadow max-h-[calc(100vh-330px)] min-h-[260px] overflow-auto" }, h("table", { className: T.table },
                     h("thead", { className: "sticky top-0" }, h("tr", { className: T.headRow },
                       ["Số HĐ", "Ngày HĐ", "Đến hạn", "Quá hạn", "Nhóm", "Sale", "Còn nợ", "Chứng từ"].map((x, i) => h("th", { key: x, className: T.th(i === 3 || i === 6) }, x)))),
                     h("tbody", null, hd.map((r, i) => h("tr", { key: i, className: T.row(i) },
@@ -155,7 +155,7 @@
                       h("td", { className: T.num }, fmtTr(r.con_no, 1)),
                       (() => {
                         const ct = [r.bbbg, r.hop_dong_ban, r.khong_chung_tu ? "Thiếu BBBG/ĐCCN" : null, r.ghi_chu].filter(Boolean).join(" · ") || "—";
-                        return h("td", { className: T.td + " max-w-[180px] truncate text-[11px] text-slate-500", title: ct }, ct);
+                        return h("td", { className: T.td + " min-w-[200px] text-[11px] text-slate-500", title: ct }, ct);
                       })())))))),
             det && det.log.length > 0 && h(UI.Panel, { title: "Lịch sử thao tác", className: "mt-4" },
               h("div", { className: "max-h-48 divide-y divide-slate-100 overflow-y-auto" }, det.log.map((l) => h("div", { key: l.id, className: "flex gap-3 px-4 py-1.5 text-[12px]" },
