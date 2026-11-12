@@ -10,11 +10,15 @@
   const Bar = ({ value, max, prev }) => h("div", { className: "h-2.5 w-full min-w-[80px] rounded-sm bg-slate-100", title: fmtTr(value) + " tr" },
     h("div", { className: "h-2.5 rounded-sm " + (prev ? "bg-slate-400" : "bg-blue-500"), style: { width: Math.max(0, Math.min(100, (value / (max || 1)) * 100)) + "%" } }));
 
-  const Delta = ({ v, invert }) => {
+  // Chênh lệch nợ: giảm = xanh (tốt), tăng = đỏ (xấu). neutral = không đánh giá tốt/xấu (nợ trong hạn A0).
+  const Delta = ({ v, neutral }) => {
     if (v == null || Math.abs(v) < 0.5e6) return h("span", { className: "text-slate-400" }, "0");
-    const bad = invert ? v < 0 : v > 0;
-    return h("span", { className: bad ? "text-red-600" : "text-green-700" }, (v > 0 ? "+" : "") + fmtTr(v));
+    return h("span", { className: neutral ? "text-slate-600" : UI.deltaCls(v) }, (v > 0 ? "+" : "") + fmtTr(v));
   };
+  // "+x tr (+y%)" tô màu theo chiều tăng/giảm nợ.
+  const pctSigned = (v) => (v > 0 ? "+" : "") + fmtPct(v);
+  const DeltaTr = ({ v, p }) => h("span", { className: "font-medium " + UI.deltaCls(v - p) },
+    (v - p >= 0 ? "+" : "") + fmtTr(v - p) + " tr" + (p ? " (" + pctSigned((v - p) / p) + ")" : ""));
 
   function KpiRow({ data, f, khach }) {
     const ky = data.meta.ky, kt = data.meta.ky_truoc;
@@ -26,13 +30,16 @@
     const bbbg = D.sum(cur.filter((r) => r.khong_chung_tu && r.bu !== "cttm"));
     const bbbgP = D.sum(prev.filter((r) => r.khong_chung_tu && r.bu !== "cttm"));
     const hv = D.sum(D.applyFilter(data.hang_vay, f), (r) => r.gia_tri);
-    const sub = (v, p) => "So với " + fmtKyLabel(kt) + ": " + (v - p >= 0 ? "+" : "") + fmtTr(v - p) + " tr (" + fmtPct(p ? (v - p) / p : null) + ")";
+    const vs = h("span", null, "vs " + fmtKyLabel(kt) + ": ");
+    const ratio = tong ? qh / tong : null, ratioP = tongP ? qhP / tongP : null;
     return h("div", { className: "grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" },
-      h(UI.StatCard, { label: "TỔNG DƯ NỢ CUỐI KỲ (tr)", value: fmtTr(tong), sub: sub(tong, tongP) }),
-      h(UI.StatCard, { label: "NỢ QUÁ HẠN A1–A4 (tr)", value: fmtTr(qh), sub: "Tỷ trọng " + fmtPct(tong ? qh / tong : null) + " (" + fmtKyLabel(kt) + ": " + fmtPct(tongP ? qhP / tongP : null) + ")" }),
+      h(UI.StatCard, { label: "TỔNG DƯ NỢ CUỐI KỲ (tr)", value: fmtTr(tong), sub: h(React.Fragment, null, vs, h(DeltaTr, { v: tong, p: tongP })) }),
+      h(UI.StatCard, { label: "NỢ QUÁ HẠN A1–A4 (tr)", value: fmtTr(qh), sub: h(React.Fragment, null, vs, h(DeltaTr, { v: qh, p: qhP }),
+        " · tỷ trọng ", h("span", { className: "font-medium " + UI.deltaCls(ratio != null && ratioP != null ? ratio - ratioP : null, 0.0005) }, fmtPct(ratio)),
+        " (" + fmtPct(ratioP) + ")") }),
       h(UI.StatCard, { label: "QUÁ HẠN TRÊN MỨC AN TOÀN A2–A4 (tr)", value: fmtTr(nghiem), accent: true,
-        sub: fmtPct(qh ? nghiem / qh : null) + " nợ quá hạn · " + sub(nghiem, nghiemP).replace("So với", "vs") }),
-      h(UI.StatCard, { label: "DƯ NỢ CHƯA CÓ BBBG/ĐCCN (tr)", value: fmtTr(bbbg), sub: "Chưa gồm CTTM · vs " + fmtKyLabel(kt) + ": " + (bbbg - bbbgP >= 0 ? "+" : "") + fmtTr(bbbg - bbbgP) }),
+        sub: h(React.Fragment, null, fmtPct(qh ? nghiem / qh : null) + " nợ quá hạn · ", vs, h(DeltaTr, { v: nghiem, p: nghiemP })) }),
+      h(UI.StatCard, { label: "DƯ NỢ CHƯA CÓ BBBG/ĐCCN (tr)", value: fmtTr(bbbg), sub: h(React.Fragment, null, "Chưa gồm CTTM · ", vs, h(DeltaTr, { v: bbbg, p: bbbgP })) }),
       h(UI.StatCard, { label: "HÀNG VAY CHƯA XUẤT HĐ (tr)", value: fmtTr(hv), sub: new Set(D.applyFilter(data.hang_vay, f).map((r) => r.ten_kh)).size + " khách hàng" }));
   }
 
@@ -94,13 +101,13 @@
             return h("tr", { key: n, className: T.row(i) },
               h("td", { className: T.td + (D.NHOM_GT.includes(n) ? " font-medium text-red-700" : "") }, D.NHOM_LABEL[n]),
               h("td", { className: T.num }, fmtTr(c)), h("td", { className: T.num + " text-slate-500" }, fmtTr(p)),
-              h("td", { className: T.num }, h(Delta, { v: c - p, invert: n === "A0" })), h("td", { className: T.num }, fmtPct(p ? (c - p) / p : null)),
+              h("td", { className: T.num }, h(Delta, { v: c - p, neutral: n === "A0" })), h("td", { className: T.num + " " + (n === "A0" ? "text-slate-600" : UI.deltaCls(c - p)) }, p ? pctSigned((c - p) / p) : "—"),
               h("td", { className: T.num }, fmtPct(tong ? c / tong : null)),
               h("td", { className: T.td + " w-48" }, h("div", { className: "flex flex-col gap-[2px]" }, h(Bar, { value: c, max }), h(Bar, { value: p, max, prev: true }))));
           }),
           h("tr", { className: "border-t border-slate-200 bg-slate-50 font-semibold" },
             h("td", { className: T.td }, "Tổng dư nợ"), h("td", { className: T.num }, fmtTr(tong)), h("td", { className: T.num }, fmtTr(tongP)),
-            h("td", { className: T.num }, h(Delta, { v: tong - tongP })), h("td", { className: T.num }, fmtPct(tongP ? (tong - tongP) / tongP : null)),
+            h("td", { className: T.num }, h(Delta, { v: tong - tongP })), h("td", { className: T.num + " " + UI.deltaCls(tong - tongP) }, tongP ? pctSigned((tong - tongP) / tongP) : "—"),
             h("td", { className: T.num }, "100%"), h("td", null))))));
   }
 
@@ -159,7 +166,7 @@
   function TongQuan() {
     return h(D.KyScreen, null, ({ data, f }) => {
       const khach = D.buildKhach(data, f);
-      const filtered = f.nganh.length || f.nv.length || f.loai.length;
+      const filtered = D.hasFilter(f);
       return h("div", { className: "flex flex-col gap-4" },
         h(KpiRow, { data, f, khach }),
         h(TienDo, { khach, meta: data.meta, f }),

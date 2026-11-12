@@ -16,7 +16,7 @@
     { path: "/hang-vay", label: "Hàng vay chưa xuất HĐ" },
     { path: "/quan-tri", label: "Quản trị", admin: true },
   ];
-  const KEEP = ["ky", "nganh", "nv", "loai"]; // giữ bộ lọc khi chuyển tab
+  const KEEP = ["ky", "nganh", "mien", "nv", "loai"]; // giữ bộ lọc khi chuyển tab
 
   const ROLE_BADGE = {
     admin: { label: "Admin", cls: "bg-amber-50 text-amber-700 border-amber-200" },

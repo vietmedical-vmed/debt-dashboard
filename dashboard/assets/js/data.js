@@ -1,5 +1,5 @@
 // Tải + tổng hợp số liệu 1 kỳ (client-side). Mọi màn dùng chung bộ lọc trên URL:
-//   ky=2026-10 & nganh=CTCH & nv=<tên NV> & loai=<nhóm KH>
+//   ky=2026-10 & nganh=CTCH & mien=Miền Bắc & nv=<tên NV> & loai=<nhóm KH>
 (function () {
   const { useState, useEffect, useMemo } = React;
   const h = React.createElement;
@@ -84,17 +84,27 @@
     return {
       ky: q.get("ky") || "",
       nganh: q.getAll("nganh"),
+      mien: q.getAll("mien"),
       nv: q.getAll("nv"),
       loai: q.getAll("loai"),
       set: (changes) => R.setQuery(changes),
     };
   }
 
-  // Thanh lọc chuẩn: Kỳ + BU (ngành hàng) + Sale + Nhóm KH.
+  // Miền của sale = dm_ps.area (qua get_ky ps_dir). Sale không có trong dm_ps → không có miền.
+  const MIEN_ORDER = { "Miền Bắc": 1, "Miền Trung": 2, "Miền Nam": 3 };
+  const mienMap = (data) => new Map(((data && data.ps_dir) || []).filter((d) => d.area).map((d) => [d.ten_nv, String(d.area).normalize("NFC").trim()]));
+  const hasFilter = (f) => !!(f.nganh.length || f.mien.length || f.nv.length || f.loai.length);
+
+  // Thanh lọc chuẩn: Kỳ + BU (ngành hàng) + Miền + Sale + Nhóm KH.
   function KyFilterBar({ kyList, data, f, extra }) {
     const curRows = data ? data.agg.filter((r) => r.ky === data.meta.ky) : [];
     const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi"));
     const nvs = data ? uniq([...curRows.map((r) => r.ten_nv), ...data.hang_vay.map((r) => r.ten_nv)]) : [];
+    // Miền: chỉ các miền có trong BU đang chọn.
+    const mOf = mienMap(data);
+    const miens = [...new Set(curRows.filter((r) => !f.nganh.length || f.nganh.includes(r.nganh_hang)).map((r) => mOf.get(r.ten_nv)).filter(Boolean))]
+      .sort((a, b) => (MIEN_ORDER[a] || 9) - (MIEN_ORDER[b] || 9) || a.localeCompare(b, "vi"));
     return h(UI.FilterBar, null,
       h(UI.FilterSelect, {
         label: "Kỳ", allowAll: false,
@@ -102,6 +112,7 @@
         selected: f.ky ? [f.ky] : [], onChange: (v) => f.set({ ky: v[0] || "" }),
       }),
       h(UI.FilterSelect, { label: "BU", multiple: true, options: uniq(curRows.map((r) => r.nganh_hang)).map((n) => ({ value: n, label: UI.buName(n) })), selected: f.nganh, onChange: (v) => f.set({ nganh: v }) }),
+      (miens.length > 1 || f.mien.length > 0) && h(UI.FilterSelect, { label: "Miền", multiple: true, options: miens, selected: f.mien, onChange: (v) => f.set({ mien: v }) }),
       nvs.length > 1 && h(UI.FilterSelect, { label: "Sale", multiple: true, searchable: true, options: nvs, selected: f.nv, onChange: (v) => f.set({ nv: v }) }),
       h(UI.FilterSelect, { label: "Nhóm KH", multiple: true, options: uniq(curRows.map((r) => r.loai_hinh)), selected: f.loai, onChange: (v) => f.set({ loai: v }) }),
       extra);
@@ -117,7 +128,7 @@
     if (list.rows && list.rows.length === 0) {
       return h(UI.Empty, null, "Chưa có kỳ báo cáo nào. Admin vào tab ", h("a", { href: R.href("/quan-tri"), className: UI.btn.link }, "Quản trị"), " để nạp file công nợ kế toán gửi.");
     }
-    const ff = { ...f, ky };
+    const ff = { ...f, ky, mienOf: mienMap(st.data) };
     return h(React.Fragment, null,
       h(KyFilterBar, { kyList: list.rows, data: st.data, f: ff, extra: extraFilters }),
       st.error ? h(UI.LoadingBlock, { error: st.error })
@@ -129,6 +140,7 @@
   function applyFilter(rows, f) {
     return rows.filter((r) =>
       (!f.nganh.length || f.nganh.includes(r.nganh_hang)) &&
+      (!f.mien || !f.mien.length || (f.mienOf && f.mien.includes(f.mienOf.get(r.ten_nv)))) &&
       (!f.nv.length || f.nv.includes(r.ten_nv)) &&
       (!f.loai.length || !("loai_hinh" in r) || f.loai.includes(r.loai_hinh)));
   }
@@ -203,7 +215,7 @@
   };
 
   window.DEBT_DATA = {
-    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, KyScreen, applyFilter, sum, groupSum,
+    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, hasFilter, KyScreen, applyFilter, sum, groupSum,
     buildKhach, hanInfo, StatusBadge, invalidate,
   };
 })();

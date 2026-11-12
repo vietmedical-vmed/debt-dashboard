@@ -241,7 +241,7 @@
         h("td", { className: T.num }, fmtTr(s.tong)),
         h("td", { className: T.num }, fmtTr(s.A1)),
         h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(s.qh)),
-        h("td", { className: T.num + (s.qh - s.qhP > 0.5e6 ? " text-red-600" : s.qh - s.qhP < -0.5e6 ? " text-green-700" : " text-slate-400") }, (s.qh - s.qhP > 0 ? "+" : "") + fmtTr(s.qh - s.qhP)),
+        h("td", { className: T.num + " " + UI.deltaCls(s.qh - s.qhP) }, (s.qh - s.qhP > 0 ? "+" : "") + fmtTr(s.qh - s.qhP)),
         h("td", { className: T.num }, fmtTr(s.thu)),
         h("td", { className: T.num }, s.need),
         ...D.STATUS_LIST.map((st) => stCell(s, st)),

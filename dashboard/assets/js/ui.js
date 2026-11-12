@@ -54,6 +54,11 @@
   // Ngành hàng trong file kế toán → tên BU hiển thị (toàn app, kể cả Excel). Dữ liệu / khoá vẫn giữ tên ngành gốc.
   const BU_NAME = { "ctch": "CH&CS", "can thiệp tim mạch": "CTTM & CTUT", "nội soi tiêu hao": "THNS & CSVT" };
   const buName = (nganh) => (nganh == null ? "" : BU_NAME[String(nganh).normalize("NFC").trim().toLowerCase()] || String(nganh));
+  // Màu chênh lệch nợ so với kỳ trước: giảm = tốt (xanh), tăng = xấu (đỏ), |v| ≤ ngưỡng = xám.
+  const deltaCls = (v, eps = 0.5e6) => (v == null || !isFinite(v) || Math.abs(v) <= eps) ? "text-slate-400" : v > 0 ? "text-red-600" : "text-green-700";
+  // Số chênh lệch (triệu đồng) có dấu và màu; eps cho số không phải tiền (vd tỷ lệ).
+  const Delta = ({ v, digits = 0, suffix = "", eps, fmt }) => h("span", { className: deltaCls(v, eps) },
+    v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : "") + (fmt ? fmt(v) : fmtTr(v, digits)) + suffix);
   const fmtKyLabel = (ky) => { if (!ky) return "—"; const [y, m] = ky.split("-"); return "T" + m + "/" + y; };
 
   // ─── Context: Reload mềm + ô lọc trên header ──────────────
@@ -247,7 +252,7 @@
   const fieldLabel = "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
   window.DEBT_UI = {
-    fmtInt, fmtTien, fmtKy, fmtDate, deaccent, fyOf, fyLabel, fmtTr, fmtPct, fmtKyLabel, buName,
+    fmtInt, fmtTien, fmtKy, fmtDate, deaccent, fyOf, fyLabel, fmtTr, fmtPct, fmtKyLabel, buName, deltaCls, Delta,
     I, ReloadContext, useReload, FilterSlotContext, FilterBar, FilterSelect,
     StatCard, Panel, Badge, Swatch, Legend, Segmented, SearchInput,
     LoadingBlock, RefreshingBar, ErrorBox, Empty, Modal, Pager, T, btn, input, fieldLabel,

@@ -120,14 +120,14 @@
       h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
-          stat("Kỳ trước A2–A4", fmtTr(k.prev_qua_han)),
+          stat("Kỳ trước A2–A4 · +/-", h(React.Fragment, null, fmtTr(k.prev_qua_han), h("span", { className: "ml-2 text-[13px]" }, h(UI.Delta, { v: k.qua_han - k.prev_qua_han })))),
           stat("Tổng dư nợ (tr)", fmtTr(k.tong)),
           stat("Thu trong tháng (tr)", fmtTr(k.thu)),
           stat("Quá hạn lâu nhất", k.max_ngay + " ngày")),
         k.gt_prev && k.gt_prev.thang_du_kien && h("div", { className: "rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600" },
           "Giải trình " + fmtKyLabel(k.gt_prev.ky) + " dự kiến thu tháng ", h("b", null, k.gt_prev.thang_du_kien),
           " · Thực thu " + fmtKyLabel(data.meta.ky) + ": ", h("b", null, fmtTr(k.thu, 1) + " tr"),
-          " · A2–A4 thay đổi: ", h("b", null, (k.qua_han - k.prev_qua_han >= 0 ? "+" : "") + fmtTr(k.qua_han - k.prev_qua_han, 1) + " tr")),
+          " · A2–A4 thay đổi: ", h("b", null, h(UI.Delta, { v: k.qua_han - k.prev_qua_han, digits: 1, suffix: " tr" }))),
 
         h("div", { className: "grid gap-4 xl:grid-cols-3" },
           h("div", { className: "min-w-0 xl:col-span-1" },
@@ -189,7 +189,7 @@
     const tt = q.get("tt") || "all";
     const [search, setSearch] = useState(q.get("q") || "");
     const [open, setOpen] = useState(null);
-    const khach = useMemo(() => D.buildKhach(data, f), [data, f.nganh.join(), f.nv.join(), f.loai.join()]);
+    const khach = useMemo(() => D.buildKhach(data, f), [data, f.nganh.join(), f.mien.join(), f.nv.join(), f.loai.join()]);
     const need = khach.filter((k) => k.can_gt);
     const canEditKeys = data.can_edit_keys === undefined ? [] : data.can_edit_keys; // null = admin/manager sửa tất cả
     const approveNv = new Set(data.can_approve_nv || []);
@@ -229,7 +229,7 @@
                   k.nhom_gt.startsWith("am:") && h("div", { className: "mt-0.5 text-[11px] text-slate-400" }, "GT: " + k.nhom_label)),
                 h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, UI.buName(n)))),
                 h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
-                h("td", { className: T.num + (d > 0.5e6 ? " text-red-600" : d < -0.5e6 ? " text-green-700" : " text-slate-400") }, (d > 0 ? "+" : "") + fmtTr(d)),
+                h("td", { className: T.num + " " + UI.deltaCls(d) }, (d > 0 ? "+" : "") + fmtTr(d)),
                 h("td", { className: T.num }, fmtTr(k.tong)),
                 h("td", { className: T.num }, k.max_ngay + " ng"),
                 h("td", { className: T.num }, fmtTr(k.thu)),
