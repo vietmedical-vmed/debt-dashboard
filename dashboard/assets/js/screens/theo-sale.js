@@ -105,7 +105,12 @@
       };
     };
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
-      const items = [...groups.get(n).values()].map((x) => ({ ...x, gt: status(x.ma_kh, x.nganh) })).sort((a, b) => b.tong - a.tong);
+      // A1 không bắt buộc giải trình: dòng A1 chỉ tham chiếu giải trình đã có (đơn vị giải trình nằm ở nhóm A2–A4), không đếm, không nút.
+      const ref = !D.NHOM_GT.includes(n);
+      const items = [...groups.get(n).values()].map((x) => {
+        const gt = status(x.ma_kh, x.nganh);
+        return { ...x, gt: !ref ? gt : { ...gt, ref: true, refNeed: gt.need, need: 0, done: 0, total: 0, items: gt.items.filter(({ k }) => k.gt && k.trang_thai !== "chua") } };
+      }).sort((a, b) => b.tong - a.tong);
       const sub = {}; let tong = 0;
       for (const x of items) { for (const [k, v] of Object.entries(x.cells)) sub[k] = (sub[k] || 0) + v; tong += x.tong; }
       const needItems = items.filter((x) => x.gt.need);
@@ -117,7 +122,9 @@
   }
 
   // Ô "Giải trình": chỉ tính các cặp KH × ngành có nợ A2–A4; KH chỉ có A1 → "Không bắt buộc".
-  const gtText = (gt) => (!gt.need ? "Không bắt buộc"
+  // Nhóm A1: KH còn A2–A4 cùng BU → "Giải trình ở nhóm A2–A4" (chỉ tham chiếu).
+  const REF_TEXT = "Giải trình ở nhóm A2–A4";
+  const gtText = (gt) => (gt.ref ? (gt.refNeed ? REF_TEXT : "Không bắt buộc") : !gt.need ? "Không bắt buộc"
     : (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " phần" : "Chưa giải trình")
       + (gt.list.some((x) => x.cap_nhat) ? " · cần cập nhật" : ""));
   const groupText = (g) => (g.need ? g.done + "/" + g.need + " KH đã GT" : "Không bắt buộc");
@@ -171,6 +178,7 @@
     if (!pv.groups.length) return null;
     const v = (n) => (n ? fmtTr(n, 1) : "");
     const GtCell = ({ gt }) => {
+      if (gt.ref) return gt.refNeed ? h("span", { className: "text-slate-400" }, REF_TEXT) : h("span", { className: "text-slate-400" }, "—");
       if (!gt.need) return h("span", { className: "text-slate-400" }, "—");
       const title = gt.list.map((x) => x.nganh + ": " + D.TRANG_THAI[x.st].label + (x.cap_nhat ? " (cần cập nhật)" : "")).join("\n");
       const ok = gt.done === gt.total;
