@@ -45,7 +45,15 @@
     Send: icon(["m22 2-7 20-4-9-9-4Z", "M22 2 11 13"]),
     Undo: icon(["M3 7v6h6", "M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"]),
     Clock: icon(["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 6v6l4 2"]),
+    Info: icon(["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 16v-4", "M12 8h.01"]),
+    ExternalLink: icon(["M15 3h6v6", "M10 14 21 3", "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"]),
+    ChevronUp: icon(["m18 15-6-6-6 6"]),
+    ArrowUpDown: icon(["m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16"]),
   };
+
+  // Icon ⓘ có tooltip (title) — dùng thay cho phụ đề dài.
+  const Hint = ({ text, size = 13 }) => h("span", { title: text, "aria-label": text, role: "img",
+    className: "ml-1 inline-flex cursor-help align-middle normal-case text-slate-400 hover:text-blue-600" }, h(I.Info, { size }));
 
   // Tiền VND → triệu đồng (giống báo cáo kế toán).
   const fmtTr = (v, digits = 0) => (v == null || v === "") ? "—"
@@ -254,7 +262,7 @@
   window.DEBT_UI = {
     fmtInt, fmtTien, fmtKy, fmtDate, deaccent, fyOf, fyLabel, fmtTr, fmtPct, fmtKyLabel, buName, deltaCls, Delta,
     I, ReloadContext, useReload, FilterSlotContext, FilterBar, FilterSelect,
-    StatCard, Panel, Badge, Swatch, Legend, Segmented, SearchInput,
+    StatCard, Panel, Badge, Swatch, Legend, Segmented, SearchInput, Hint,
     LoadingBlock, RefreshingBar, ErrorBox, Empty, Modal, Pager, T, btn, input, fieldLabel,
   };
 })();
