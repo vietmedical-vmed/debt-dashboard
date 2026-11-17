@@ -68,12 +68,17 @@
   // Nhóm hiển thị trong bảng tổng hợp: A4 → A1. Chỉ A2–A4 bắt buộc giải trình.
   const PIVOT_NHOM = ["A4", "A3", "A2", "A1"];
 
-  // Cộng dồn 1 nhóm nợ từ các dòng KH (dùng cả khi lọc trên màn hình).
+  // Cộng dồn 1 nhóm nợ từ các dòng KH × người giải trình (dùng cả khi lọc trên màn hình).
+  // Đếm theo KH: KH xong khi mọi dòng phải giải trình của KH trong nhóm đều xong.
   function summarize(nhom, items) {
     const sub = {}; let tong = 0;
-    for (const x of items) { for (const [k, v] of Object.entries(x.cells)) sub[k] = (sub[k] || 0) + v; tong += x.tong; }
-    const needItems = items.filter((x) => x.gt.need);
-    return { nhom, items, sub, tong, need: needItems.length, done: needItems.filter((x) => x.gt.done === x.gt.total).length };
+    const kh = new Map(); // ma_kh → true nếu xong hết
+    for (const x of items) {
+      for (const [k, v] of Object.entries(x.cells)) sub[k] = (sub[k] || 0) + v;
+      tong += x.tong;
+      if (x.gt.need) kh.set(x.ma_kh, (kh.has(x.ma_kh) ? kh.get(x.ma_kh) : true) && x.gt.done === x.gt.total);
+    }
+    return { nhom, items, sub, tong, nKh: new Set(items.map((x) => x.ma_kh)).size, need: kh.size, done: [...kh.values()].filter(Boolean).length };
   }
   function grandOf(groups) {
     const grand = {}; let grandTong = 0;
@@ -92,15 +97,19 @@
     };
     const rows = D.applyFilter(data.agg, f).filter((r) => r.ky === ky && PIVOT_NHOM.includes(r.nhom_no));
     const cols = new Map();   // bu|team → {bu, team}
-    const groups = new Map(); // nhóm → Map(ma_kh → dòng)
+    // Dòng = KH × người giải trình (nhom_gt): KH có 2 người giải trình → 2 dòng, mỗi dòng đúng số tiền của mình.
+    const groups = new Map(); // nhóm → Map(ma_kh|nhom_gt → dòng)
+    const nhomLabel = data.nhom_label || {};
     for (const r of rows) {
       const c = colOf(r), ck = c.bu + SEP + c.team;
       cols.set(ck, c);
       if (!groups.has(r.nhom_no)) groups.set(r.nhom_no, new Map());
       const g = groups.get(r.nhom_no);
-      const x = g.get(r.ma_kh) || { ma_kh: r.ma_kh, ten_kh: r.ten_kh, cells: {}, tong: 0, nganh: new Set() };
+      const nhomGt = r.nhom_gt || "";
+      const rk = r.ma_kh + SEP + nhomGt;
+      const x = g.get(rk) || { key: rk, ma_kh: r.ma_kh, ten_kh: r.ten_kh, nhom_gt: nhomGt, nhom_label: nhomLabel[nhomGt] || nhomGt.replace(/^(am|nv):/, ""), cells: {}, tong: 0, nganh: new Set() };
       x.cells[ck] = (x.cells[ck] || 0) + r.con_no; x.tong += r.con_no; x.nganh.add(r.nganh_hang);
-      g.set(r.ma_kh, x);
+      g.set(rk, x);
     }
     const colList = [...cols.entries()].map(([key, c]) => ({ key, ...c }))
       .sort((a, b) => a.bu.localeCompare(b.bu, "vi") || (a.team === NO_TEAM) - (b.team === NO_TEAM) || a.team.localeCompare(b.team, "vi"));
@@ -115,8 +124,8 @@
       if (!byPair.has(pk)) byPair.set(pk, []);
       byPair.get(pk).push(k);
     }
-    const status = (ma, nganhSet) => {
-      const units = [...nganhSet].flatMap((ng) => byPair.get(ma + SEP + ng) || [])
+    const status = (ma, nganhSet, nhomGt) => {
+      const units = [...nganhSet].flatMap((ng) => byPair.get(ma + SEP + ng) || []).filter((k) => k.nhom_gt === nhomGt)
         .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi") || String(a.nhom_label).localeCompare(String(b.nhom_label), "vi"));
       const need = units.filter((k) => k.can_gt);
       // Mỗi đơn vị phải giải trình (hoặc đã có giải trình) = 1 dòng trong ô Chi tiết / Tháng
@@ -145,10 +154,14 @@
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
       // A1 không bắt buộc giải trình: dòng A1 chỉ tham chiếu giải trình đã có (đơn vị giải trình nằm ở nhóm A2–A4), không đếm, không nút.
       const ref = !D.NHOM_GT.includes(n);
-      const items = [...groups.get(n).values()].map((x) => {
-        const gt = status(x.ma_kh, x.nganh);
-        return { ...x, gt: !ref ? gt : { ...gt, ref: true, refNeed: gt.need, need: 0, done: 0, total: 0, items: gt.items.filter(({ k }) => k.gt && k.trang_thai !== "chua") } };
-      }).sort((a, b) => b.tong - a.tong);
+      const list = [...groups.get(n).values()];
+      const perKh = new Map(); // ma_kh → tổng KH trong nhóm (để các dòng cùng KH đứng liền nhau)
+      for (const x of list) perKh.set(x.ma_kh, (perKh.get(x.ma_kh) || 0) + x.tong);
+      const items = list.map((x) => {
+        const gt = status(x.ma_kh, x.nganh, x.nhom_gt);
+        const split = list.filter((y) => y.ma_kh === x.ma_kh).length > 1;
+        return { ...x, split, gt: !ref ? gt : { ...gt, ref: true, refNeed: gt.need, need: 0, done: 0, total: 0, items: gt.items.filter(({ k }) => k.gt && k.trang_thai !== "chua") } };
+      }).sort((a, b) => perKh.get(b.ma_kh) - perKh.get(a.ma_kh) || String(a.ma_kh).localeCompare(String(b.ma_kh)) || b.tong - a.tong);
       return summarize(n, items);
     });
     return { cols: colList, bus, groups: groupsOut, ...grandOf(groupsOut), khMap };
@@ -167,7 +180,7 @@
     : x.gt.done === x.gt.total);
   function viewOf(pv, q, st) {
     const qq = q.trim() ? UI.deaccent(q.trim()) : "";
-    const hitQ = (x) => !qq || UI.deaccent(x.ten_kh || "").includes(qq) || UI.deaccent(x.ma_kh || "").includes(qq);
+    const hitQ = (x) => !qq || [x.ten_kh, x.ma_kh, x.nhom_label].some((t) => UI.deaccent(t || "").includes(qq));
     const counts = {};
     for (const o of ST_FILTER) counts[o.key] = new Set(pv.groups.flatMap((g) => g.items.filter((x) => hitQ(x) && matchSt(x, o.key)).map((x) => x.ma_kh))).size;
     const groups = pv.groups.map((g) => summarize(g.nhom, g.items.filter((x) => hitQ(x) && matchSt(x, st)))).filter((g) => g.items.length);
@@ -187,7 +200,7 @@
     const aoa = [["Nhóm nợ / Khách hàng", ...pv.cols.map((c) => c.bu + " · " + c.team), "Tổng", "Giải trình", "Chi tiết giải trình", "Tháng dự kiến thu"]];
     for (const g of pv.groups) {
       aoa.push([g.nhom, ...pv.cols.map((c) => g.sub[c.key] || null), g.tong, groupText(g), "", ""]);
-      for (const x of g.items) aoa.push(["   " + x.ten_kh, ...pv.cols.map((c) => x.cells[c.key] || null), x.tong, gtText(x.gt), x.gt.chi_tiet, x.gt.thang]);
+      for (const x of g.items) aoa.push(["   " + x.ten_kh + (x.split ? " — người giải trình: " + x.nhom_label : ""), ...pv.cols.map((c) => x.cells[c.key] || null), x.tong, gtText(x.gt), x.gt.chi_tiet, x.gt.thang]);
     }
     aoa.push(["Tổng cộng", ...pv.cols.map((c) => pv.grand[c.key] || null), pv.grandTong, "", "", ""]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -294,25 +307,29 @@
                 h("span", { className: "inline-flex items-center gap-1.5" },
                   h(cl ? UI.I.ChevronRight : UI.I.ChevronDown, { size: 14, className: "text-blue-600" }),
                   D.NHOM_LABEL[g.nhom],
-                  h("span", { className: "font-normal text-slate-500" }, "· " + g.items.length + " KH"))),
+                  h("span", { className: "font-normal text-slate-500" }, "· " + g.nKh + " KH"))),
               pv.cols.map((c, i) => h("td", { key: c.key, className: T.num + border(i) }, v(g.sub[c.key]))),
               h("td", { className: T.num + BL }, v(g.tong)),
               h("td", { className: T.td + " whitespace-nowrap text-[12px] text-slate-600" + BL },
                 g.need ? h(Progress, { done: g.done, total: g.need, text: g.done + "/" + g.need + " KH" }) : "Không bắt buộc"),
               h("td", { className: T.td + BL }), h("td", { className: T.td + BL }));
             if (cl) return [head];
-            return [head, ...g.items.map((x, i) => h("tr", { key: g.nhom + x.ma_kh, className: "group align-top " + ROW_BG(i) + " " + ROW_HOVER.replace("group-hover:", "hover:") },
+            // Sọc nền theo KH: các dòng cùng KH (nhiều người giải trình) cùng màu nền.
+            const khIdx = new Map();
+            for (const x of g.items) if (!khIdx.has(x.ma_kh)) khIdx.set(x.ma_kh, khIdx.size);
+            return [head, ...g.items.map((x) => { const i = khIdx.get(x.ma_kh); return h("tr", { key: g.nhom + x.key, className: "group align-top " + ROW_BG(i) + " " + ROW_HOVER.replace("group-hover:", "hover:") },
               h("td", { className: T.td + " min-w-[220px] max-w-[340px] pl-7 " + STICKY_L + " " + ROW_BG(i) + " " + ROW_HOVER },
                 h("div", { className: "flex items-start gap-1.5" },
                   h("button", { type: "button", onClick: () => openName(x), className: "text-left hover:text-blue-700 hover:underline",
-                    title: x.gt.items.length === 1 ? "Mở giải trình" : "Mở trong tab Giải trình" }, x.ten_kh),
+                    title: x.gt.items.length === 1 ? "Mở giải trình" : "Mở trong tab Giải trình" }, x.ten_kh,
+                    x.split && h("span", { className: "mt-0.5 block text-[11px] text-slate-500" }, "Người giải trình: " + x.nhom_label)),
                   h("a", { href: R.href("/giai-trinh", { ky: data.meta.ky, q: x.ten_kh }), title: "Mở trong tab Giải trình",
                     className: "mt-0.5 shrink-0 text-slate-400 opacity-0 hover:text-blue-600 group-hover:opacity-100" }, h(UI.I.ExternalLink, { size: 12 })))),
               pv.cols.map((c, j) => h("td", { key: c.key, className: T.num + border(j) }, v(x.cells[c.key]))),
               h("td", { className: T.num + BL + " font-medium" }, v(x.tong)),
               h("td", { className: T.td + " whitespace-nowrap text-[12px]" + BL }, h(GtCell, { gt: x.gt })),
               h("td", { className: T.td + " text-[12px] text-slate-700" + BL }, h(DetailCell, { x })),
-              h("td", { className: T.td + " text-[12px]" + BL }, h(ThangCell, { x }))))];
+              h("td", { className: T.td + " text-[12px]" + BL }, h(ThangCell, { x }))); })];
           })),
         h("tfoot", { className: "sticky bottom-0 z-10" },
           h("tr", { className: "border-t-2 border-slate-300 bg-slate-100 font-bold shadow-[0_-1px_0_#ccd0d5]" },
