@@ -222,6 +222,47 @@ const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}
 const QUA_HAN = ["A2", "A3", "A4"];
 // Hóa đơn hiện trong popup giải trình: A1 (giải trình không bắt buộc) + A2–A4 (bắt buộc).
 const HD_GT = ["A1", "A2", "A3", "A4"];
+const thangOk = (v: unknown) => {
+  const t = String(v || "");
+  return KY_RE.test(t) && Number(t.slice(5)) >= 1 && Number(t.slice(5)) <= 12 ? t : null;
+};
+const trText = (v: number) => String(Math.round(v / 1e5) / 10).replace(".", ",") + " tr";
+// Giải trình theo nhóm nợ (2026-11-17): mỗi nhóm A1–A4 đang có nợ của đơn vị = 1 phần
+// { ke_hoach, thang_du_kien, hd_chon, so_tien }. A2–A4 bắt buộc; A1 không bắt buộc (trừ khi đơn vị chỉ có A1).
+// Trả thêm các cột tổng hợp (ke_hoach gộp, tháng sớm nhất, tổng tiền, mọi hóa đơn) cho màn / báo cáo cũ.
+const NHOM_ORDER = ["A4", "A3", "A2", "A1"];
+function buildTheoNhom(hdRows: any[], keys: string[], input: any) {
+  const present = NHOM_ORDER.filter((n) => hdRows.some((r) => r.nhom_no === n && Number(r.con_no || 0) > 0.5));
+  const out: Record<string, any> = {};
+  const missing: string[] = [];
+  for (const n of present) {
+    const src = input && typeof input === "object" ? input[n] || {} : {};
+    const want = new Set(Array.isArray(src.hd_chon) ? src.hd_chon.slice(0, 2000).map((x: unknown) => String(x).slice(0, 300)) : []);
+    const chon: string[] = [];
+    let tien = 0;
+    hdRows.forEach((r, i) => { if (r.nhom_no === n && want.has(keys[i])) { chon.push(keys[i]); tien += Number(r.con_no || 0); } });
+    const sec = { ke_hoach: str(src.ke_hoach), thang_du_kien: thangOk(src.thang_du_kien), hd_chon: chon.length ? chon : null, so_tien: chon.length ? tien : null };
+    if (sec.ke_hoach || sec.thang_du_kien || sec.hd_chon) out[n] = sec;
+    if (QUA_HAN.includes(n)) for (const f of ["ke_hoach", "thang_du_kien"]) if (!(sec as any)[f]) missing.push(n + "." + f);
+  }
+  // Chỉ có A1: phải nhập đủ phần A1.
+  if (!present.some((n) => QUA_HAN.includes(n)) && present.includes("A1")) {
+    for (const f of ["ke_hoach", "thang_du_kien"]) if (!out.A1 || !out.A1[f]) missing.push("A1." + f);
+  }
+  const secs = NHOM_ORDER.filter((n) => out[n]);
+  const months = secs.map((n) => out[n].thang_du_kien).filter(Boolean).sort();
+  const allChon = secs.flatMap((n) => out[n].hd_chon || []);
+  const sumTien = secs.reduce((t, n) => t + (out[n].so_tien || 0), 0);
+  return {
+    theo_nhom: secs.length ? out : null,
+    ke_hoach: secs.filter((n) => out[n].ke_hoach).map((n) => n + " (" + (out[n].thang_du_kien || "—") + (out[n].so_tien != null ? " · " + trText(out[n].so_tien) : "") + "): " + out[n].ke_hoach).join("\n") || null,
+    thang_du_kien: months[0] ?? null,
+    hd_chon: allChon.length ? allChon : null,
+    so_tien_du_kien: allChon.length ? sumTien : null,
+    missing,
+  };
+}
+
 // Khoá hóa đơn để lưu danh sách đã tích chọn: số HĐ | ngày HĐ | đến hạn, trùng thì thêm #n theo thứ tự hiện.
 // Phải khớp hdKeys() trong dashboard/assets/js/screens/giai-trinh.js.
 function hdKeys(rows: any[]) {
@@ -367,16 +408,22 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       for (const r of aggV) unitNhom.set(uk(r), r.nhom_gt);
       // Đơn vị thấy trọn (mọi dòng trong phạm vi) → được xem số A2–A4 lúc lưu; không thì ẩn số đó.
       const unitTotal = new Map<string, number>(), unitVis = new Map<string, number>(), qhFull = new Map<string, number>();
+      const qhNhom = new Map<string, Set<string>>(); // đơn vị → các nhóm A2–A4 đang có nợ
       for (const r of agg) {
         const k = uk(r);
         unitTotal.set(k, (unitTotal.get(k) ?? 0) + 1);
-        if (r.ky === ky && QUA_HAN.includes(r.nhom_no)) qhFull.set(k, (qhFull.get(k) ?? 0) + Number(r.con_no || 0));
+        if (r.ky === ky && QUA_HAN.includes(r.nhom_no)) {
+          qhFull.set(k, (qhFull.get(k) ?? 0) + Number(r.con_no || 0));
+          if (Number(r.con_no || 0) > 0.5) { if (!qhNhom.has(k)) qhNhom.set(k, new Set()); qhNhom.get(k)!.add(r.nhom_no); }
+        }
       }
       for (const r of aggV) { const k = uk(r); unitVis.set(k, (unitVis.get(k) ?? 0) + 1); }
       const fullUnit = (k: string) => perm.all || (unitVis.get(k) ?? 0) === (unitTotal.get(k) ?? 0);
       // "Cần cập nhật" tính trên số trọn đơn vị ở server (lệch > 10% và > 10 triệu so với lúc lưu).
-      const canCapNhat = (r: any) => r.ky === ky && r.trang_thai !== "nhap" && r.du_no_qua_han != null
-        && Math.abs((qhFull.get(uk(r)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)));
+      // Giải trình theo nhóm: nhóm A2–A4 mới phát sinh (vd sau khi nạp lại) mà chưa có phần giải trình → cũng cần cập nhật.
+      const thieuNhom = (r: any) => !!r.theo_nhom && [...(qhNhom.get(uk(r)) ?? [])].some((n) => !(r.theo_nhom[n] && r.theo_nhom[n].ke_hoach));
+      const canCapNhat = (r: any) => r.ky === ky && r.trang_thai !== "nhap" && (thieuNhom(r) || (r.du_no_qua_han != null
+        && Math.abs((qhFull.get(uk(r)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)))));
       // Tên hiển thị của nhóm: họ tên area manager, hoặc tên sale.
       const amName = new Map(ams.map((u) => [u.username, u.ho_va_ten || u.username]));
       const nvName = new Map(agg.map((r) => [nhomOf(cov, r.ten_nv), r.ten_nv]));
@@ -456,20 +503,23 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const want = new Set(Array.isArray(f.hd_chon) ? f.hd_chon.slice(0, 2000).map((x: unknown) => String(x).slice(0, 300)) : []);
       const chon = keys.filter((k) => want.has(k));
       const soTien = hdRows.reduce((t, r, i) => t + (want.has(keys[i]) ? Number(r.con_no || 0) : 0), 0);
+      // Bản mới gửi fields.theo_nhom (giải trình theo từng nhóm nợ); bản cũ gửi ke_hoach / thang_du_kien chung.
+      const tn = f.theo_nhom && typeof f.theo_nhom === "object" ? buildTheoNhom(hdRows, keys, f.theo_nhom) : null;
       const rec: Record<string, unknown> = {
         ky, ma_kh: ma, nganh_hang: nganh, nhom_gt: nhom, ten_nv: nvs.join(", "),
         ten_kh: str(f.ten_kh, 300) ?? all[0]?.ten_kh ?? cur?.ten_kh ?? null,
         du_no_qua_han: duNo,
-        ke_hoach: str(f.ke_hoach),
-        hd_chon: chon.length ? chon : null,
-        so_tien_du_kien: chon.length ? soTien : null,
-        thang_du_kien: KY_RE.test(String(f.thang_du_kien || "")) && Number(String(f.thang_du_kien).slice(5)) >= 1 && Number(String(f.thang_du_kien).slice(5)) <= 12 ? String(f.thang_du_kien) : null,
+        ke_hoach: tn ? tn.ke_hoach : str(f.ke_hoach),
+        theo_nhom: tn ? tn.theo_nhom : null,
+        hd_chon: tn ? tn.hd_chon : chon.length ? chon : null,
+        so_tien_du_kien: tn ? tn.so_tien_du_kien : chon.length ? soTien : null,
+        thang_du_kien: tn ? tn.thang_du_kien : thangOk(f.thang_du_kien),
         trang_thai: submit ? "cho_duyet" : "nhap",
         nguoi_cap_nhat: s.username,
         cap_nhat_luc: new Date().toISOString(),
       };
       if (submit) {
-        const missing = ["ke_hoach", "thang_du_kien"].filter((k) => !rec[k]);
+        const missing = tn ? tn.missing : ["ke_hoach", "thang_du_kien"].filter((k) => !rec[k]);
         if (missing.length) throw new HttpError("thieu_thong_tin:" + missing.join(","));
         rec.nguoi_gui = s.username;
         rec.gui_luc = new Date().toISOString();

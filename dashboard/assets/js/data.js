@@ -209,6 +209,16 @@
     return { days: d, text: d < 0 ? "quá hạn " + -d + " ngày" : d === 0 ? "hôm nay" : "còn " + d + " ngày" };
   }
 
+  // Giải trình theo nhóm nợ (gt.theo_nhom = { A4: { ke_hoach, thang_du_kien, hd_chon, so_tien }, … }).
+  // Giải trình lưu trước khi tách nhóm (theo_nhom null) = "bản chung": áp cho mọi nhóm A2–A4 như trước.
+  const NHOM_GT_ORDER = ["A4", "A3", "A2", "A1"];
+  const isLegacyGt = (gt) => !!gt && !gt.theo_nhom;
+  const secOf = (gt, n) => (gt && gt.theo_nhom ? gt.theo_nhom[n] || null : null);
+  // Các dòng hiển thị: [{ n, ke_hoach, thang_du_kien, so_tien }] — bản chung: 1 dòng n = null.
+  const gtLines = (gt) => !gt ? []
+    : gt.theo_nhom ? NHOM_GT_ORDER.filter((n) => gt.theo_nhom[n]).map((n) => ({ n, ...gt.theo_nhom[n] }))
+    : [{ n: null, ke_hoach: gt.ke_hoach, thang_du_kien: gt.thang_du_kien, so_tien: gt.so_tien_du_kien }];
+
   const StatusBadge = ({ st }) => {
     const t = TRANG_THAI[st] || TRANG_THAI.chua;
     return h(UI.Badge, { tone: t.tone }, t.label);
@@ -216,6 +226,6 @@
 
   window.DEBT_DATA = {
     NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, hasFilter, KyScreen, applyFilter, sum, groupSum,
-    buildKhach, hanInfo, StatusBadge, invalidate,
+    buildKhach, hanInfo, StatusBadge, invalidate, NHOM_GT_ORDER, isLegacyGt, secOf, gtLines,
   };
 })();

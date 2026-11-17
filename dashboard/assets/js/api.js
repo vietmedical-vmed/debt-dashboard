@@ -57,7 +57,9 @@
   const FIELD = { ke_hoach: "giải trình & kế hoạch xử lý", thang_du_kien: "tháng dự kiến thu (yyyy-mm)", nhan_xet: "nhận xét" };
   function errorText(code) {
     const s = String(code || "");
-    if (s.startsWith("thieu_thong_tin:")) return "Thiếu: " + s.split(":")[1].split(",").map((f) => FIELD[f] || f).join(", ");
+    // "A2.ke_hoach" = thiếu trường của phần giải trình nhóm nợ A2.
+    if (s.startsWith("thieu_thong_tin:")) return "Thiếu: " + s.split(":")[1].split(",")
+      .map((f) => (f.includes(".") ? f.split(".")[0] + " – " + (FIELD[f.split(".")[1]] || f.split(".")[1]) : FIELD[f] || f)).join("; ");
     return ({
       forbidden: "Bạn không có quyền thực hiện thao tác này",
       unauthorized: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại",
