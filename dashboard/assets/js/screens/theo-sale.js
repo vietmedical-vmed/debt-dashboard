@@ -124,12 +124,14 @@
       if (!byPair.has(pk)) byPair.set(pk, []);
       byPair.get(pk).push(k);
     }
-    const status = (ma, nganhSet, nhomGt) => {
+    const hasGt = (k) => !!(k.gt && k.trang_thai !== "chua");
+    // a1 = dòng nhóm A1: đơn vị có A2–A4 chỉ tham chiếu giải trình đã có; đơn vị chỉ có A1 được giải trình tự nguyện.
+    const status = (ma, nganhSet, nhomGt, a1) => {
       const units = [...nganhSet].flatMap((ng) => byPair.get(ma + SEP + ng) || []).filter((k) => k.nhom_gt === nhomGt)
         .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi") || String(a.nhom_label).localeCompare(String(b.nhom_label), "vi"));
       const need = units.filter((k) => k.can_gt);
       // Mỗi đơn vị phải giải trình (hoặc đã có giải trình) = 1 dòng trong ô Chi tiết / Tháng
-      const items = units.filter((k) => k.can_gt || (k.gt && k.trang_thai !== "chua"));
+      const items = units.filter((k) => (a1 ? (k.can_gt ? hasGt(k) : true) : k.can_gt || hasGt(k)));
       const nganhCount = new Set(items.map((k) => k.nganh_hang)).size;
       // Nhãn đầu dòng: tên ngành nếu nhiều ngành; thêm người giải trình nếu 1 ngành có nhiều nhóm
       const label = (k) => {
@@ -148,19 +150,21 @@
         total: need.length,
         list: need.map((k) => ({ nganh: [UI.buName(k.nganh_hang), k.nhom_label].filter(Boolean).join(" · "), st: k.trang_thai, cap_nhat: !!k.can_cap_nhat })),
         chi_tiet: withGt.map((k) => pre(k) + (k.gt.ke_hoach || "")).join("\n"),
-        thang: withGt.map((k) => pre(k) + (k.gt.thang_du_kien || "")).join("\n"),
+        thang: withGt.map((k) => pre(k) + (k.gt.thang_du_kien || "") + (tienThu(k.gt) ? " (" + tienThu(k.gt) + ")" : "")).join("\n"),
+        opt: items.some((k) => !k.can_gt && hasGt(k)),
       };
     };
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
-      // A1 không bắt buộc giải trình: dòng A1 chỉ tham chiếu giải trình đã có (đơn vị giải trình nằm ở nhóm A2–A4), không đếm, không nút.
+      // A1 không bắt buộc giải trình, không đếm vào tiến độ. Đơn vị còn A2–A4: chỉ tham chiếu giải trình ở nhóm A2–A4.
+      // Đơn vị chỉ có A1: có nút "+ Giải trình" (tự nguyện).
       const ref = !D.NHOM_GT.includes(n);
       const list = [...groups.get(n).values()];
       const perKh = new Map(); // ma_kh → tổng KH trong nhóm (để các dòng cùng KH đứng liền nhau)
       for (const x of list) perKh.set(x.ma_kh, (perKh.get(x.ma_kh) || 0) + x.tong);
       const items = list.map((x) => {
-        const gt = status(x.ma_kh, x.nganh, x.nhom_gt);
+        const gt = status(x.ma_kh, x.nganh, x.nhom_gt, ref);
         const split = list.filter((y) => y.ma_kh === x.ma_kh).length > 1;
-        return { ...x, split, gt: !ref ? gt : { ...gt, ref: true, refNeed: gt.need, need: 0, done: 0, total: 0, items: gt.items.filter(({ k }) => k.gt && k.trang_thai !== "chua") } };
+        return { ...x, split, gt: !ref ? gt : { ...gt, ref: true, refNeed: gt.need, need: 0, done: 0, total: 0 } };
       }).sort((a, b) => perKh.get(b.ma_kh) - perKh.get(a.ma_kh) || String(a.ma_kh).localeCompare(String(b.ma_kh)) || b.tong - a.tong);
       return summarize(n, items);
     });
@@ -190,7 +194,8 @@
   // Ô "Giải trình": chỉ tính các cặp KH × ngành có nợ A2–A4; KH chỉ có A1 → "Không bắt buộc".
   // Nhóm A1: KH còn A2–A4 cùng BU → "Giải trình ở nhóm A2–A4" (chỉ tham chiếu).
   const REF_TEXT = "Giải trình ở nhóm A2–A4";
-  const gtText = (gt) => (gt.ref ? (gt.refNeed ? REF_TEXT : "Không bắt buộc") : !gt.need ? "Không bắt buộc"
+  const tienThu = (gt) => (gt && gt.so_tien_du_kien != null ? fmtTr(gt.so_tien_du_kien, 1) + " tr" : "");
+  const gtText = (gt) => (gt.ref ? [gt.opt && "Đã giải trình (A1, không bắt buộc)", gt.refNeed && REF_TEXT].filter(Boolean).join(" · ") || "Không bắt buộc" : !gt.need ? "Không bắt buộc"
     : (gt.done === gt.total ? "Đã giải trình" : gt.done ? gt.done + "/" + gt.total + " phần" : "Chưa giải trình")
       + (gt.list.some((x) => x.cap_nhat) ? " · cần cập nhật" : ""));
   const groupText = (g) => (g.need ? g.done + "/" + g.need + " KH đã GT" : "Không bắt buộc");
@@ -243,17 +248,23 @@
             ? h("button", { type: "button", onClick: () => setOpenKey(k.key),
                 className: "inline-flex items-center gap-1 rounded border border-blue-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-blue-700 hover:bg-blue-50" },
                 "+ Giải trình")
-            : h("span", { className: "italic text-slate-400" }, "chưa có"));
+            : k.can_gt ? h("span", { className: "italic text-slate-400" }, "chưa có") : h("span", { className: "text-slate-300", title: "Không bắt buộc" }, "—"));
       }));
     };
     const ThangCell = ({ x }) => !x.gt.items.length ? h("span", { className: "text-slate-300" }, "—")
       : h("div", { className: "flex flex-col gap-1.5" }, x.gt.items.map(({ k, label: lb }) => h("div", { key: k.key, className: "whitespace-nowrap" },
           lb && h("span", { className: "mr-1 text-slate-400" }, lb + ":"),
-          k.gt && k.trang_thai !== "chua" && k.gt.thang_du_kien ? k.gt.thang_du_kien : h("span", { className: "text-slate-300" }, "—"))));
+          k.gt && k.trang_thai !== "chua" && k.gt.thang_du_kien ? k.gt.thang_du_kien : h("span", { className: "text-slate-300" }, "—"),
+          k.gt && k.trang_thai !== "chua" && tienThu(k.gt) && h("span", { className: "ml-1.5 text-slate-500" }, "· " + tienThu(k.gt)))));
     if (!pv.groups.length) return null;
     const v = (n) => (n ? fmtTr(n, 1) : "");
     const GtCell = ({ gt }) => {
-      if (gt.ref) return gt.refNeed ? h("span", { className: "text-slate-400", title: REF_TEXT }, "↑ A2–A4") : h("span", { className: "text-slate-300" }, "—");
+      if (gt.ref) {
+        if (!gt.opt && !gt.refNeed) return h("span", { className: "text-slate-300", title: "Không bắt buộc" }, "—");
+        return h("div", { className: "flex flex-col items-start gap-1" },
+          gt.opt && h(UI.Badge, { tone: "green", title: "Giải trình tự nguyện cho nợ A1" }, "Đã giải trình"),
+          gt.refNeed > 0 && h("span", { className: "text-slate-400", title: REF_TEXT }, "↑ A2–A4"));
+      }
       if (!gt.need) return h("span", { className: "text-slate-300" }, "—");
       const title = gt.list.map((x) => x.nganh + ": " + D.TRANG_THAI[x.st].label + (x.cap_nhat ? " (cần cập nhật)" : "")).join("\n");
       const ok = gt.done === gt.total;

@@ -77,6 +77,9 @@
   }
 
   const err = (code) => { throw new Error(code); };
+  // Hóa đơn hiện trong popup: A1 (không bắt buộc) + A2–A4. Khoá hóa đơn giống debt-api / giai-trinh.js.
+  const HD_GT = ["A1", ...NHOM];
+  const hdKeys = (rows) => { const seen = new Map(); return rows.map((r) => { const b = [r.so_hd ?? "", r.ngay_hd ?? "", r.ngay_den_han ?? ""].join("|"); const n = (seen.get(b) || 0) + 1; seen.set(b, n); return n > 1 ? b + "#" + n : b; }); };
 
   // ── Quyền: giống debt-api ──
   const norm = (s) => String(s ?? "").normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
@@ -187,7 +190,7 @@
       }
       case "get_kh": {
         const meta = kyRow(p.ky); if (!meta) err("not_found");
-        const rows = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && NHOM.includes(r.nhom_no) && nhomOf(r.ten_nv) === p.nhom_gt)
+        const rows = (S.cong_no[meta.import_id] || []).filter((r) => r.ky === p.ky && r.ma_kh === p.ma_kh && r.nganh_hang === p.nganh_hang && !r.loai_tru && HD_GT.includes(r.nhom_no) && nhomOf(r.ten_nv) === p.nhom_gt)
           .sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
         const hd = P.all ? rows : rows.filter((r) => canSee(P, r));
         if (!hd.length) err("forbidden");
@@ -208,10 +211,15 @@
         if (!PHE_DUYET) p = { ...p, submit: true };
         const qh = rowsAll.filter((r) => NHOM.includes(r.nhom_no));
         const f = p.fields || {};
+        const hdRows = rowsAll.filter((r) => HD_GT.includes(r.nhom_no)).sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
+        const keys = hdKeys(hdRows), want = new Set(Array.isArray(f.hd_chon) ? f.hd_chon.map(String) : []);
+        const chon = keys.filter((k) => want.has(k));
         const rec = {
           ky: p.ky, ma_kh: p.ma_kh, nganh_hang: p.nganh_hang, nhom_gt: p.nhom_gt, ten_nv: nvs.join(", "), ten_kh: f.ten_kh || (rowsAll[0] && rowsAll[0].ten_kh) || null,
           du_no_qua_han: qh.reduce((t, r) => t + r.con_no, 0),
-          ke_hoach: f.ke_hoach || null, thang_du_kien: /^\d{4}-(0[1-9]|1[0-2])$/.test(f.thang_du_kien || "") ? f.thang_du_kien : null,
+          ke_hoach: f.ke_hoach || null,
+          hd_chon: chon.length ? chon : null, so_tien_du_kien: chon.length ? hdRows.reduce((t, r, i) => t + (want.has(keys[i]) ? r.con_no : 0), 0) : null,
+          thang_du_kien: /^\d{4}-(0[1-9]|1[0-2])$/.test(f.thang_du_kien || "") ? f.thang_du_kien : null,
           trang_thai: p.submit ? "cho_duyet" : "nhap", nguoi_cap_nhat: u.username, cap_nhat_luc: now(),
         };
         if (p.submit) {

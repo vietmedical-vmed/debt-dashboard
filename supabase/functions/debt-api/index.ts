@@ -220,6 +220,19 @@ const needKy = (ky: unknown) => { if (typeof ky !== "string" || !KY_RE.test(ky))
 const str = (v: unknown, max = 2000) => (v == null || v === "" ? null : String(v).slice(0, max));
 const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 const QUA_HAN = ["A2", "A3", "A4"];
+// Hóa đơn hiện trong popup giải trình: A1 (giải trình không bắt buộc) + A2–A4 (bắt buộc).
+const HD_GT = ["A1", "A2", "A3", "A4"];
+// Khoá hóa đơn để lưu danh sách đã tích chọn: số HĐ | ngày HĐ | đến hạn, trùng thì thêm #n theo thứ tự hiện.
+// Phải khớp hdKeys() trong dashboard/assets/js/screens/giai-trinh.js.
+function hdKeys(rows: any[]) {
+  const seen = new Map<string, number>();
+  return rows.map((r) => {
+    const base = [r.so_hd ?? "", r.ngay_hd ?? "", r.ngay_den_han ?? ""].join("|");
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n > 1 ? base + "#" + n : base;
+  });
+}
 // Tạm tắt luồng phê duyệt (2026-11-11): lưu giải trình = "Đã giải trình", sửa lại được tới khi khoá kỳ.
 // Bật lại: đặt true + đổi PHE_DUYET trong dashboard/assets/js/config.js.
 const PHE_DUYET = false;
@@ -283,11 +296,11 @@ function canEditNhom(p: Perm, me: string, nhom: string) {
   if (nhom.startsWith("nv:")) return p.selfNv.has(nhom.slice(3));
   return false;
 }
-async function pairRows(db: SupabaseClient, importId: string, ky: string, ma: string, nganh: string, cols: string, onlyQuaHan: boolean) {
+async function pairRows(db: SupabaseClient, importId: string, ky: string, ma: string, nganh: string, cols: string, onlyHdGt: boolean) {
   return await fetchAll((a, b) => {
     let q = db.schema("app_debt").from("cong_no").select(cols)
       .eq("import_id", importId).eq("ky", ky).eq("ma_kh", ma).eq("nganh_hang", nganh).eq("loai_tru", false);
-    if (onlyQuaHan) q = q.in("nhom_no", QUA_HAN);
+    if (onlyHdGt) q = q.in("nhom_no", HD_GT);
     return q.order("so_ngay_qua_han", { ascending: false }).order("id").range(a, b);
   });
 }
@@ -393,7 +406,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       };
     }
 
-    // Chi tiết hóa đơn A2–A4 của 1 KH × ngành + lịch sử giải trình các kỳ.
+    // Chi tiết hóa đơn A1–A4 của 1 KH × ngành + lịch sử giải trình các kỳ.
     case "get_kh": {
       const ky = needKy(p.ky);
       const ma = String(p.ma_kh || ""), nganh = String(p.nganh_hang || ""), nhom = String(p.nhom_gt || "");
@@ -423,7 +436,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const meta = await getKyRow(db, ky);
       if (!meta?.import_id) throw new HttpError("not_found", 404);
       if (meta.khoa) throw new HttpError("ky_da_khoa");
-      const all = (await pairRows(db, meta.import_id, ky, ma, nganh, "ten_nv, nhom_no, con_no, ten_kh, so_ngay_qua_han", false))
+      const all = (await pairRows(db, meta.import_id, ky, ma, nganh, "ten_nv, nhom_no, con_no, ten_kh, so_ngay_qua_han, so_hd, ngay_hd, ngay_den_han", false))
         .filter((r) => nhomOf(cov, r.ten_nv) === nhom);
       if (!all.length) throw new HttpError("not_found", 404);
       const nvs = [...new Set(all.map((r) => r.ten_nv))].sort();
@@ -437,11 +450,19 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
 
       const submit = PHE_DUYET ? !!p.submit : true; // không duyệt: lưu = đã giải trình
       const f = p.fields || {};
+      // Hóa đơn đã tích chọn (cùng thứ tự với popup) → server tự cộng lại số tiền dự kiến thu, không tin số client gửi.
+      const hdRows = all.filter((r) => HD_GT.includes(r.nhom_no));
+      const keys = hdKeys(hdRows);
+      const want = new Set(Array.isArray(f.hd_chon) ? f.hd_chon.slice(0, 2000).map((x: unknown) => String(x).slice(0, 300)) : []);
+      const chon = keys.filter((k) => want.has(k));
+      const soTien = hdRows.reduce((t, r, i) => t + (want.has(keys[i]) ? Number(r.con_no || 0) : 0), 0);
       const rec: Record<string, unknown> = {
         ky, ma_kh: ma, nganh_hang: nganh, nhom_gt: nhom, ten_nv: nvs.join(", "),
         ten_kh: str(f.ten_kh, 300) ?? all[0]?.ten_kh ?? cur?.ten_kh ?? null,
         du_no_qua_han: duNo,
         ke_hoach: str(f.ke_hoach),
+        hd_chon: chon.length ? chon : null,
+        so_tien_du_kien: chon.length ? soTien : null,
         thang_du_kien: KY_RE.test(String(f.thang_du_kien || "")) && Number(String(f.thang_du_kien).slice(5)) >= 1 && Number(String(f.thang_du_kien).slice(5)) <= 12 ? String(f.thang_du_kien) : null,
         trang_thai: submit ? "cho_duyet" : "nhap",
         nguoi_cap_nhat: s.username,

@@ -11,17 +11,35 @@
 
   const ACTION_LABEL = { luu: "Lưu nháp", gui: window.DEBT_CONFIG.PHE_DUYET ? "Gửi duyệt" : "Lưu giải trình", duyet: "Duyệt", tra_lai: "Trả lại" };
 
+  // Hóa đơn hiện trong popup: A1 (giải trình không bắt buộc) + A2–A4.
+  const HD_GT = ["A1", ...D.NHOM_GT];
+  // Khoá hóa đơn để lưu danh sách đã tích chọn: số HĐ | ngày HĐ | đến hạn, trùng thì thêm #n theo thứ tự hiện.
+  // Phải khớp hdKeys() trong supabase/functions/debt-api/index.ts.
+  function hdKeys(rows) {
+    const seen = new Map();
+    return rows.map((r) => {
+      const base = [r.so_hd ?? "", r.ngay_hd ?? "", r.ngay_den_han ?? ""].join("|");
+      const n = (seen.get(base) || 0) + 1;
+      seen.set(base, n);
+      return n > 1 ? base + "#" + n : base;
+    });
+  }
+  // Tổng tiền dự kiến thu đã lưu (triệu đồng) — dùng ở danh sách / bảng tổng hợp.
+  const tienThuText = (gt) => (gt && gt.so_tien_du_kien != null ? fmtTr(gt.so_tien_du_kien, 1) + " tr" : "");
+
   // ── Form giải trình + duyệt ───────────────────────────────────────
-  // Ô tổng tiền các hóa đơn đang tích chọn (chỉ để tham khảo khi chọn tháng dự kiến thu, không lưu).
-  function TongChon({ pick }) {
+  // Ô tổng tiền các hóa đơn đang tích chọn; lưu cùng giải trình (server tự cộng lại theo hóa đơn đã chọn).
+  function TongChon({ pick, editable }) {
     if (!pick || !pick.n) return h("div", { className: "rounded-md border border-dashed border-slate-300 px-3 py-2 text-[12px] text-slate-400" },
-      "Tích chọn hóa đơn bên phải để tính tổng số tiền dự kiến thu.");
+      pick && pick.saved != null
+        ? h(React.Fragment, null, "Đã lưu tổng tiền thu ", h("b", { className: "text-slate-600" }, fmtTr(pick.saved, 1) + " tr"), " (hóa đơn đã chọn không còn trong dữ liệu hiện tại).")
+        : editable ? "Tích chọn hóa đơn bên phải để tính tổng số tiền dự kiến thu." : "Chưa chọn hóa đơn dự kiến thu.");
     return h("div", { className: "flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2" },
       h("div", { className: "min-w-0 flex-1" },
         h("div", { className: "text-[10px] font-semibold uppercase tracking-wide text-blue-700" }, "Tổng tiền thu · " + pick.n + " hóa đơn đã chọn"),
         h("div", { className: "text-[18px] font-bold tabular-nums text-blue-800" }, fmtTr(pick.sum, 1) + " tr",
           h("span", { className: "ml-2 text-[12px] font-normal text-blue-700" }, "(" + UI.fmtInt(Math.round(pick.sum)) + " đ)"))),
-      h("button", { type: "button", onClick: pick.clear, className: "shrink-0 text-[12px] text-blue-700 hover:underline" }, "Bỏ chọn"));
+      editable && h("button", { type: "button", onClick: pick.clear, className: "shrink-0 text-[12px] text-blue-700 hover:underline" }, "Bỏ chọn"));
   }
 
   function GiaiTrinhForm({ k, data, kyMeta, onSaved, canEdit, canApprove, pick }) {
@@ -42,7 +60,7 @@
     const save = async (submit) => {
       setBusy(true); setMsg(null);
       try {
-        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, nhom_gt: k.nhom_gt, submit, fields: { ...form, ten_kh: k.ten_kh } });
+        const r = await api("save_gt", { ky: data.meta.ky, ma_kh: k.ma_kh, nganh_hang: k.nganh_hang, nhom_gt: k.nhom_gt, submit, fields: { ...form, ten_kh: k.ten_kh, hd_chon: pick ? pick.keys : [] } });
         onSaved(r.row);
         setMsg({ ok: true, text: !D.PHE_DUYET ? "Đã lưu giải trình" : submit ? "Đã gửi duyệt" : "Đã lưu nháp" });
       } catch (e) { setMsg({ ok: false, text: errorText(e.message) }); }
@@ -73,6 +91,8 @@
         h("b", null, "Cần cập nhật: "), (k.gt.du_no_qua_han != null
           ? "giải trình viết khi A2–A4 là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr"
           : "số A2–A4 đã thay đổi đáng kể so với lúc lưu giải trình") + " (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
+      !k.can_gt && h("div", { className: "rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600" },
+        "Khách hàng chỉ có nợ A1 (quá hạn trong mức an toàn): giải trình không bắt buộc, không tính vào tiến độ giải trình."),
       prefill && editable && h("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800" },
         "Đã điền sẵn giải trình " + fmtKyLabel(k.gt_prev.ky) + ". Cập nhật tiến độ và chọn lại tháng dự kiến thu."),
 
@@ -81,12 +101,12 @@
             h("label", null, h("span", { className: UI.fieldLabel }, "Giải trình & kế hoạch xử lý *"),
               h("textarea", { rows: 5, value: form.ke_hoach, onChange: set("ke_hoach"), className: UI.input,
                 placeholder: "Lý do quá hạn, tình trạng hồ sơ, việc cần làm, ai làm, khi nào…" })),
-            h(TongChon, { pick }),
+            h(TongChon, { pick, editable: true }),
             h("label", { className: "md:w-1/2" }, h("span", { className: UI.fieldLabel }, "Tháng dự kiến thu *"),
               h("input", { type: "month", value: form.thang_du_kien, onChange: set("thang_du_kien"), className: UI.input, min: data.meta.ky, placeholder: "yyyy-mm" })))
         : h("div", { className: "grid gap-3" },
             ro("Giải trình & kế hoạch xử lý", gt && gt.ke_hoach),
-            h(TongChon, { pick }),
+            h(TongChon, { pick, editable: false }),
             ro("Tháng dự kiến thu", gt && gt.thang_du_kien)),
 
       msg && (msg.ok
@@ -125,16 +145,22 @@
     // Lưu/duyệt xong: cập nhật danh sách + tải lại lịch sử thao tác trong popup.
     const saved = (row) => { onSaved(row); setTick((t) => t + 1); };
 
-    const hd = det ? det.hoa_don.filter((r) => D.NHOM_GT.includes(r.nhom_no)) : [];
+    const hd = det ? det.hoa_don.filter((r) => HD_GT.includes(r.nhom_no)) : [];
     // Tích chọn hóa đơn → ô tổng tiền thu bên form. Khoá theo id (bản DB) hoặc số HĐ + vị trí; giữ khi tải lại sau lưu.
     const [chon, setChon] = useState(() => new Set());
-    const hdKey = (r, i) => (r.id != null ? "id" + r.id : (r.so_hd || "") + "|" + (r.ngay_hd || "") + "|" + i);
-    const keys = hd.map(hdKey);
+    const keys = hdKeys(hd);
+    // Lần đầu tải hóa đơn: tích lại các hóa đơn đã chọn lúc lưu giải trình.
+    const initRef = useRef(false);
+    useEffect(() => {
+      if (!det || initRef.current) return;
+      initRef.current = true;
+      if (k.gt && Array.isArray(k.gt.hd_chon)) setChon(new Set(k.gt.hd_chon));
+    }, [det]);
     const nChon = keys.filter((x) => chon.has(x)).length;
     const allOn = hd.length > 0 && nChon === hd.length;
     const toggle = (key) => setChon((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
     const toggleAll = () => setChon(allOn ? new Set() : new Set(keys));
-    const pick = { n: nChon, sum: hd.reduce((t, r, i) => t + (chon.has(keys[i]) ? Number(r.con_no) || 0 : 0), 0), clear: () => setChon(new Set()) };
+    const pick = { n: nChon, keys: keys.filter((x) => chon.has(x)), saved: k.gt && k.gt.so_tien_du_kien != null && !(k.gt.hd_chon || []).some((x) => keys.includes(x)) ? k.gt.so_tien_du_kien : null, sum: hd.reduce((t, r, i) => t + (chon.has(keys[i]) ? Number(r.con_no) || 0 : 0), 0), clear: () => setChon(new Set()) };
     const allRef = useRef(null);
     useEffect(() => { if (allRef.current) allRef.current.indeterminate = nChon > 0 && !allOn; });
     const cb = "h-4 w-4 cursor-pointer accent-blue-600 align-middle";
@@ -144,8 +170,9 @@
 
     return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + UI.buName(k.nganh_hang) + "  ·  người giải trình: " + (k.nhom_label || "—") + "  (sale: " + k.ten_nv + ")" },
       h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
-        h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-5" },
+        h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-6" },
           stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
+          stat("A1 (tr) · không bắt buộc", fmtTr(k.A1), "text-amber-700"),
           stat("Kỳ trước A2–A4 · +/-", h(React.Fragment, null, fmtTr(k.prev_qua_han), h("span", { className: "ml-2 text-[13px]" }, h(UI.Delta, { v: k.qua_han - k.prev_qua_han })))),
           stat("Tổng dư nợ (tr)", fmtTr(k.tong)),
           stat("Thu trong tháng (tr)", fmtTr(k.thu)),
@@ -164,10 +191,10 @@
                 h("div", { className: "mb-1 flex items-center gap-2" }, h("b", null, fmtKyLabel(g.ky)), h(D.StatusBadge, { st: D.stOf(g) }),
                   g.du_no_qua_han != null && h("span", { className: "text-slate-400" }, "A2–A4 lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
                 h("div", { className: "whitespace-pre-wrap text-slate-700" }, g.ke_hoach || "—"),
-                h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (g.thang_du_kien || "—")),
+                h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (g.thang_du_kien || "—") + (tienThuText(g) ? " · " + tienThuText(g) : "")),
                 g.nhan_xet && h("div", { className: "text-slate-500" }, h("b", null, "Nhận xét QL: "), g.nhan_xet)))))),
           h("div", { className: "min-w-0 xl:col-span-2" },
-            h(UI.Panel, { title: "Hóa đơn quá hạn trên mức an toàn (A2–A4)",
+            h(UI.Panel, { title: "Hóa đơn quá hạn (A1–A4) · A1 không bắt buộc giải trình",
               subtitle: det ? hd.length + " hóa đơn · triệu đồng · tích chọn hóa đơn để tính tổng tiền thu" + (nChon ? " · đã chọn " + nChon + " (" + fmtTr(pick.sum, 1) + " tr)" : "") : null },
               err ? h("div", { className: "p-4" }, h(UI.ErrorBox, null, err))
                 : !det ? h(UI.LoadingBlock, null)
@@ -207,10 +234,11 @@
       "Tổng dư nợ (tr)": Math.round(k.tong / 1e5) / 10, "Thu trong tháng (tr)": Math.round(k.thu / 1e5) / 10,
       "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label + (k.can_cap_nhat ? " (cần cập nhật)" : ""),
       "Giải trình & kế hoạch xử lý": k.gt ? k.gt.ke_hoach : "", "Tháng dự kiến thu": k.gt ? k.gt.thang_du_kien || "" : "",
+      "Tiền dự kiến thu (tr)": k.gt && k.gt.so_tien_du_kien != null ? Math.round(k.gt.so_tien_du_kien / 1e5) / 10 : "",
       "Nhận xét quản lý": k.gt ? k.gt.nhan_xet : "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [5, 10, 30, 45, 22, 18, 14, 10, 10, 10, 10, 10, 14, 60, 12, 30].map((w) => ({ wch: w }));
+    ws["!cols"] = [5, 10, 30, 45, 22, 18, 14, 10, 10, 10, 10, 10, 14, 60, 12, 12, 30].map((w) => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Giai trinh " + meta.ky);
     XLSX.writeFile(wb, "Giai_trinh_cong_no_" + meta.ky + ".xlsx");
@@ -224,6 +252,9 @@
     const [open, setOpen] = useState(null);
     const khach = useMemo(() => D.buildKhach(data, f), [data, f.nganh.join(), f.mien.join(), f.nv.join(), f.loai.join()]);
     const need = khach.filter((k) => k.can_gt);
+    // Đơn vị chỉ có nợ A1: giải trình không bắt buộc (tự nguyện), xem ở mục lọc "A1".
+    const a1 = khach.filter((k) => !k.can_gt && (k.A1 || 0) > 0.5).sort((a, b) => b.A1 - a.A1);
+    const isA1 = tt === "a1";
     const canEditKeys = data.can_edit_keys === undefined ? [] : data.can_edit_keys; // null = admin/manager sửa tất cả
     const approveNv = new Set(data.can_approve_nv || []);
     const isMine = (k) => canEditKeys == null || canEditKeys.includes(k.key);
@@ -231,7 +262,7 @@
     const counts = { all: need.length };
     for (const k of need) { counts[k.trang_thai] = (counts[k.trang_thai] || 0) + 1; if (k.can_cap_nhat) counts.can_cap_nhat = (counts.can_cap_nhat || 0) + 1; }
     const s = UI.deaccent(search.trim());
-    const list = need.filter((k) => (tt === "all" || k.trang_thai === tt || (tt === "can_cap_nhat" && k.can_cap_nhat)) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
+    const list = (isA1 ? a1 : need).filter((k) => (tt === "all" || isA1 || k.trang_thai === tt || (tt === "can_cap_nhat" && k.can_cap_nhat)) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
     const han = D.hanInfo(data.meta.han_giai_trinh);
     const sel = open && khach.find((k) => k.key === open);
 
@@ -241,16 +272,17 @@
         kyMeta && kyMeta.khoa && " · Kỳ đã khoá"),
       h("div", { className: "flex flex-wrap items-center gap-2" },
         h(UI.Segmented, { value: tt, onChange: (v) => R.setQuery({ tt: v === "all" ? "" : v }),
-          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...D.STATUS_LIST.map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 })), { key: "can_cap_nhat", label: "Cần cập nhật", count: counts.can_cap_nhat || 0 }] }),
+          options: [{ key: "all", label: "Tất cả", count: counts.all }, ...D.STATUS_LIST.map((st) => ({ key: st, label: D.TRANG_THAI[st].label, count: counts[st] || 0 })), { key: "can_cap_nhat", label: "Cần cập nhật", count: counts.can_cap_nhat || 0 },
+            ...(a1.length || isA1 ? [{ key: "a1", label: "Chỉ có A1 (không bắt buộc)", count: a1.length }] : [])] }),
         h("div", { className: "flex-1" }),
         h(UI.SearchInput, { value: search, onChange: setSearch, placeholder: "Tìm khách hàng, sale…", className: "w-64" }),
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
 
-      list.length === 0 ? h(UI.Empty, null, need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
-      : h(UI.Panel, { title: "Khách hàng × BU phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
+      list.length === 0 ? h(UI.Empty, null, isA1 ? "Không có khách hàng nào chỉ có nợ A1." : need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
+      : h(UI.Panel, { title: isA1 ? "Khách hàng × BU chỉ có nợ A1 (giải trình không bắt buộc, tách theo người giải trình)" : "Khách hàng × BU phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
-              ["Khách hàng", "Sale", "BU", "A2–A4", "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
+              ["Khách hàng", "Sale", "BU", isA1 ? "A1" : "A2–A4", isA1 ? "Tổng quá hạn kỳ trước" : "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
                 .map((x, i) => h("th", { key: i, className: "px-3 py-2 text-center align-middle font-semibold" + (i === 0 ? " min-w-[200px]" : i === 1 ? " min-w-[140px]" : "") }, x)))),
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
@@ -261,15 +293,16 @@
                 h("td", { className: T.td + " max-w-[200px] text-[12px]" }, k.nv.map((nv) => h("div", { key: nv }, nv)),
                   k.nhom_gt.startsWith("am:") && h("div", { className: "mt-0.5 text-[11px] text-slate-400" }, "GT: " + k.nhom_label)),
                 h("td", { className: T.td + " text-[12px] text-slate-500" }, k.nganh.map((n) => h("div", { key: n, className: "whitespace-nowrap" }, UI.buName(n)))),
-                h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
-                h("td", { className: T.num + " " + UI.deltaCls(d) }, (d > 0 ? "+" : "") + fmtTr(d)),
+                isA1 ? h("td", { className: T.num + " font-semibold text-amber-700" }, fmtTr(k.A1)) : h("td", { className: T.num + " font-semibold text-red-700" }, fmtTr(k.qua_han)),
+                isA1 ? h("td", { className: T.num + " text-slate-500" }, fmtTr(k.prev_qua_han)) : h("td", { className: T.num + " " + UI.deltaCls(d) }, (d > 0 ? "+" : "") + fmtTr(d)),
                 h("td", { className: T.num }, fmtTr(k.tong)),
                 h("td", { className: T.num }, k.max_ngay + " ng"),
                 h("td", { className: T.num }, fmtTr(k.thu)),
                 h("td", { className: T.td + " whitespace-nowrap text-[12px]" }, k.gt && k.gt.thang_du_kien
-                  ? k.gt.thang_du_kien
+                  ? h(React.Fragment, null, k.gt.thang_du_kien, tienThuText(k.gt) && h("div", { className: "text-[11px] text-slate-500" }, tienThuText(k.gt)))
                   : h("span", { className: "text-slate-300" }, "—")),
-                h("td", { className: T.td }, h("div", { className: "flex flex-col items-start gap-1" }, h(D.StatusBadge, { st: k.trang_thai }),
+                h("td", { className: T.td }, h("div", { className: "flex flex-col items-start gap-1" },
+                  !k.can_gt && k.trang_thai === "chua" ? h(UI.Badge, { tone: "grey" }, "Không bắt buộc") : h(D.StatusBadge, { st: k.trang_thai }),
                   k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: k.gt.du_no_qua_han != null ? "A2–A4 lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" : "Số A2–A4 đã thay đổi so với lúc lưu" }, "Cần cập nhật"))),
                 h("td", { className: T.td }, h("span", { className: "whitespace-nowrap text-[12px] " + (action === "Xem" ? "text-slate-400" : "font-semibold text-blue-600") }, action)));
             }))))),
