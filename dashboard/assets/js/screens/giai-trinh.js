@@ -1,4 +1,4 @@
-// Giải trình: danh sách KH × sale có nợ A2–A4, sale nhập giải trình, quản lý duyệt / trả lại.
+// Giải trình: danh sách KH × sale có nợ phải giải trình (A2–A4; từ kỳ áp dụng là A1–A4), sale nhập giải trình, quản lý duyệt / trả lại.
 (function () {
   const { useState, useMemo, useEffect, useRef } = React;
   const h = React.createElement;
@@ -11,8 +11,8 @@
 
   const ACTION_LABEL = { luu: "Lưu nháp", gui: window.DEBT_CONFIG.PHE_DUYET ? "Gửi duyệt" : "Lưu giải trình", duyet: "Duyệt", tra_lai: "Trả lại" };
 
-  // Hóa đơn hiện trong popup: A1 (giải trình không bắt buộc) + A2–A4.
-  const HD_GT = ["A1", ...D.NHOM_GT];
+  // Hóa đơn hiện trong popup: A1–A4 (A1 bắt buộc giải trình hay không tùy kỳ, xem D.nhomGt).
+  const HD_GT = ["A1", "A2", "A3", "A4"];
   // Khoá hóa đơn để lưu danh sách đã tích chọn: số HĐ | ngày HĐ | đến hạn, trùng thì thêm #n theo thứ tự hiện.
   // Phải khớp hdKeys() trong supabase/functions/debt-api/index.ts.
   function hdKeys(rows) {
@@ -27,9 +27,11 @@
   // Tổng tiền dự kiến thu đã lưu (triệu đồng) — dùng ở lịch sử các kỳ.
   const tienThuText = (gt) => (gt && gt.so_tien_du_kien != null ? fmtTr(gt.so_tien_du_kien, 1) + " tr" : "");
   const NHOM_TEN = { A4: "A4 – quá hạn > 2 năm", A3: "A3 – quá hạn 1–2 năm", A2: "A2 – quá hạn trên mức an toàn, < 1 năm", A1: "A1 – quá hạn trong mức an toàn" };
-  // Nhóm nợ đơn vị đang có (A4 → A1). Nhóm bắt buộc: A2–A4; đơn vị chỉ có A1 thì A1 bắt buộc.
+  // Nhóm nợ đơn vị đang có (A4 → A1). Nhóm bắt buộc: G = D.nhomGt(kỳ); đơn vị không có nhóm nào trong G (chỉ có A1) thì A1 bắt buộc.
   const nhomsOf = (k) => D.NHOM_GT_ORDER.filter((n) => (k[n] || 0) > 0.5);
-  const batBuoc = (nhoms, n) => D.NHOM_GT.includes(n) || !nhoms.some((x) => D.NHOM_GT.includes(x));
+  const batBuoc = (G, nhoms, n) => G.includes(n) || !nhoms.some((x) => G.includes(x));
+  // Màu theo mức độ: A2–A4 đỏ, A1 vàng (không phụ thuộc bắt buộc hay không).
+  const isTrenAT = (n) => D.NHOM_TREN_AT.includes(n);
 
   // ── Form giải trình + duyệt ───────────────────────────────────────
   // Ô tổng tiền các hóa đơn đang tích chọn của 1 nhóm nợ; server tự cộng lại theo hóa đơn khi lưu.
@@ -52,9 +54,9 @@
 
   // Nội dung ban đầu từng nhóm: giải trình kỳ này (theo nhóm; bản chung → nhóm cao nhất),
   // không có thì điền sẵn nội dung kỳ trước. Tháng dự kiến thu không kế thừa: mỗi kỳ phải chọn lại.
-  function initSections(k, nhoms) {
+  function initSections(k, nhoms, G) {
     const gt = k.gt, prev = !gt && k.gt_prev;
-    const top = nhoms.find((n) => D.NHOM_GT.includes(n)) || nhoms[0];
+    const top = nhoms.find((n) => G.includes(n)) || nhoms[0];
     const out = {};
     for (const n of nhoms) {
       let ke_hoach = "", thang = "";
@@ -76,7 +78,8 @@
     const gt = k.gt;
     const prefill = !gt && k.gt_prev;
     const nhoms = nhomsOf(k);
-    const [secs, setSecs] = useState(() => initSections(k, nhoms));
+    const G = D.nhomGt(data.meta.ky), L = D.gtLabel(data.meta.ky);
+    const [secs, setSecs] = useState(() => initSections(k, nhoms, G));
     const [nhanXet, setNhanXet] = useState("");
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState(null);
@@ -112,11 +115,11 @@
     const legacy = D.isLegacyGt(gt);
     // 1 phần giải trình của 1 nhóm nợ
     const Section = (n) => {
-      const req = batBuoc(nhoms, n);
+      const req = batBuoc(G, nhoms, n);
       const sec = D.secOf(gt, n);
-      return h("div", { key: n, className: "flex flex-col gap-2.5 rounded-md border " + (D.NHOM_GT.includes(n) ? "border-red-200" : "border-amber-200") + " p-3" },
+      return h("div", { key: n, className: "flex flex-col gap-2.5 rounded-md border " + (isTrenAT(n) ? "border-red-200" : "border-amber-200") + " p-3" },
         h("div", { className: "flex flex-wrap items-center gap-2" },
-          h(UI.Badge, { tone: D.NHOM_GT.includes(n) ? "red" : "amber" }, n),
+          h(UI.Badge, { tone: isTrenAT(n) ? "red" : "amber" }, n),
           h("span", { className: "text-[12px] font-semibold text-slate-700" }, NHOM_TEN[n].slice(5)),
           h("span", { className: "ml-auto text-[12px] tabular-nums text-slate-500" }, "Còn nợ " + fmtTr(k[n], 1) + " tr"),
           !req && h("span", { className: "text-[11px] text-slate-400" }, "· không bắt buộc")),
@@ -143,11 +146,11 @@
       gt && gt.nhan_xet && h("div", { className: "rounded-md border px-3 py-2 text-[13px] " + (st === "tra_lai" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700") },
         h("b", null, "Nhận xét của quản lý: "), gt.nhan_xet),
       k.can_cap_nhat && h("div", { className: "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900" },
-        h("b", null, "Cần cập nhật: "), (gt && gt.theo_nhom && nhoms.some((n) => D.NHOM_GT.includes(n) && !(gt.theo_nhom[n] && gt.theo_nhom[n].ke_hoach))
-          ? "có nhóm nợ A2–A4 chưa có giải trình"
+        h("b", null, "Cần cập nhật: "), (gt && gt.theo_nhom && nhoms.some((n) => G.includes(n) && !(gt.theo_nhom[n] && gt.theo_nhom[n].ke_hoach))
+          ? "có nhóm nợ " + L + " chưa có giải trình"
           : k.gt.du_no_qua_han != null
-            ? "giải trình viết khi A2–A4 là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr"
-            : "số A2–A4 đã thay đổi đáng kể so với lúc lưu giải trình") + " (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
+            ? "giải trình viết khi " + L + " là " + fmtTr(k.gt.du_no_qua_han, 1) + " tr, số hiện tại " + fmtTr(k.qua_han, 1) + " tr"
+            : "số " + L + " đã thay đổi đáng kể so với lúc lưu giải trình") + " (dữ liệu đã nạp lại). Sửa và lưu lại để xác nhận."),
       !k.can_gt && h("div", { className: "rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600" },
         "Khách hàng chỉ có nợ A1 (quá hạn trong mức an toàn): giải trình không bắt buộc, không tính vào tiến độ giải trình."),
       prefill && editable && h("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800" },
@@ -240,20 +243,21 @@
     const stat = (label, v, cls = "") => h("div", { className: "rounded-md border border-slate-200 bg-white px-3 py-2" },
       h("div", { className: "text-[10px] uppercase tracking-wide text-slate-400" }, label), h("div", { className: "text-[15px] font-semibold tabular-nums " + cls }, v));
     const nCol = 9;
+    const L = D.gtLabel(data.meta.ky), a1Req = D.a1BatBuoc(data.meta.ky);
 
     return h(UI.Modal, { open: true, onClose, width: 1480, title: k.ten_kh + " · " + UI.buName(k.nganh_hang) + "  ·  người giải trình: " + (k.nhom_label || "—") + "  (sale: " + k.ten_nv + ")" },
       h("div", { className: "flex max-h-[calc(100vh-110px)] flex-col gap-4 overflow-y-auto p-4" },
         h("div", { className: "grid grid-cols-2 gap-2 md:grid-cols-6" },
-          stat("A2–A4 (tr)", fmtTr(k.qua_han), "text-red-700"),
-          stat("A1 (tr) · không bắt buộc", fmtTr(k.A1), "text-amber-700"),
-          stat("Kỳ trước A2–A4 · +/-", h(React.Fragment, null, fmtTr(k.prev_qua_han), h("span", { className: "ml-2 text-[13px]" }, h(UI.Delta, { v: k.qua_han - k.prev_qua_han })))),
+          stat(L + " (tr)", fmtTr(k.qua_han), "text-red-700"),
+          stat(a1Req ? "Trong đó A1 (tr)" : "A1 (tr) · không bắt buộc", fmtTr(k.A1), "text-amber-700"),
+          stat("Kỳ trước " + L + " · +/-", h(React.Fragment, null, fmtTr(k.prev_qua_han), h("span", { className: "ml-2 text-[13px]" }, h(UI.Delta, { v: k.qua_han - k.prev_qua_han })))),
           stat("Tổng dư nợ (tr)", fmtTr(k.tong)),
           stat("Thu trong tháng (tr)", fmtTr(k.thu)),
           stat("Quá hạn lâu nhất", k.max_ngay + " ngày")),
         k.gt_prev && k.gt_prev.thang_du_kien && h("div", { className: "rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600" },
           "Giải trình " + fmtKyLabel(k.gt_prev.ky) + " dự kiến thu tháng ", h("b", null, D.gtLines(k.gt_prev).map((x) => (x.n ? x.n + ": " : "") + (x.thang_du_kien || "—")).join(", ")),
           " · Thực thu " + fmtKyLabel(data.meta.ky) + ": ", h("b", null, fmtTr(k.thu, 1) + " tr"),
-          " · A2–A4 thay đổi: ", h("b", null, h(UI.Delta, { v: k.qua_han - k.prev_qua_han, digits: 1, suffix: " tr" }))),
+          " · " + L + " thay đổi: ", h("b", null, h(UI.Delta, { v: k.qua_han - k.prev_qua_han, digits: 1, suffix: " tr" }))),
 
         h("div", { className: "grid gap-4 xl:grid-cols-5" },
           h("div", { className: "min-w-0 xl:col-span-2" },
@@ -262,13 +266,13 @@
             lichSu.length > 0 && h(UI.Panel, { title: "Giải trình các kỳ trước", className: "mt-4" },
               h("div", { className: "divide-y divide-slate-100" }, lichSu.map((g) => h("div", { key: g.id, className: "px-4 py-2 text-[12px]" },
                 h("div", { className: "mb-1 flex items-center gap-2" }, h("b", null, fmtKyLabel(g.ky)), h(D.StatusBadge, { st: D.stOf(g) }),
-                  g.du_no_qua_han != null && h("span", { className: "text-slate-400" }, "A2–A4 lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
+                  g.du_no_qua_han != null && h("span", { className: "text-slate-400" }, D.gtLabel(g.ky) + " lúc gửi: " + fmtTr(g.du_no_qua_han) + " tr")),
                 D.gtLines(g).map((x, i) => h("div", { key: i, className: "mb-1" },
                   h("div", { className: "whitespace-pre-wrap text-slate-700" }, x.n && h("b", { className: "mr-1" }, x.n + ":"), x.ke_hoach || "—"),
                   h("div", { className: "text-slate-500" }, "Dự kiến thu tháng " + (x.thang_du_kien || "—") + (x.so_tien != null ? " · " + fmtTr(x.so_tien, 1) + " tr" : "")))),
                 g.nhan_xet && h("div", { className: "text-slate-500" }, h("b", null, "Nhận xét QL: "), g.nhan_xet)))))),
           h("div", { className: "min-w-0 xl:col-span-3" },
-            h(UI.Panel, { title: "Hóa đơn quá hạn (A1–A4) · A1 không bắt buộc giải trình",
+            h(UI.Panel, { title: "Hóa đơn quá hạn (A1–A4)" + (a1Req ? "" : " · A1 không bắt buộc giải trình"),
               subtitle: det ? hd.length + " hóa đơn · triệu đồng · tích hóa đơn để tính tiền thu của nhóm nợ đó" + (nChon ? " · đã chọn " + nChon + " (" + fmtTr(sumChon, 1) + " tr)" : "") : null },
               err ? h("div", { className: "p-4" }, h(UI.ErrorBox, null, err))
                 : !det ? h(UI.LoadingBlock, null)
@@ -281,7 +285,7 @@
                       const list = byNhom[n], p = picks[n];
                       const tong = list.reduce((t, x) => t + (Number(x.r.con_no) || 0), 0);
                       return [
-                        h("tr", { key: "g" + n, className: "border-t border-slate-200 " + (D.NHOM_GT.includes(n) ? "bg-red-50/60" : "bg-amber-50/60") },
+                        h("tr", { key: "g" + n, className: "border-t border-slate-200 " + (isTrenAT(n) ? "bg-red-50/60" : "bg-amber-50/60") },
                           h("td", { className: "px-3 py-1.5 text-center" },
                             h(TriCheck, { on: p.n === p.total, some: p.n > 0, onChange: () => (p.n === p.total ? p.clear() : p.selectAll()), cls: cb, title: "Chọn tất cả hóa đơn " + n })),
                           h("td", { colSpan: 6, className: "px-3 py-1.5 text-[12px] font-semibold text-slate-700" }, NHOM_TEN[n] + " · " + list.length + " hóa đơn",
@@ -295,7 +299,7 @@
                           h("td", { className: T.td + " whitespace-nowrap" }, fmtDate(r.ngay_hd)),
                           h("td", { className: T.td + " whitespace-nowrap" }, fmtDate(r.ngay_den_han)),
                           h("td", { className: T.num }, r.so_ngay_qua_han + " ng"),
-                          h("td", { className: T.td }, h(UI.Badge, { tone: D.NHOM_GT.includes(r.nhom_no) ? "red" : "amber" }, r.nhom_no)),
+                          h("td", { className: T.td }, h(UI.Badge, { tone: isTrenAT(r.nhom_no) ? "red" : "amber" }, r.nhom_no)),
                           h("td", { className: T.td + " whitespace-nowrap text-[11px]" }, r.ten_nv),
                           h("td", { className: T.num }, fmtTr(r.con_no, 1)),
                           (() => {
@@ -313,9 +317,10 @@
 
   // ── Xuất Excel danh sách giải trình ───────────────────────────────
   function exportExcel(list, meta) {
+    const L = D.gtLabel(meta.ky);
     const rows = list.map((k, i) => ({
       "STT": i + 1, "Mã KH": k.ma_kh, "Khách hàng": k.ten_kh, "Tên KH (kế toán)": k.ten_kh_goc, "Sale": k.ten_nv, "BU": k.nganh.map(UI.buName).join(", "), "Nhóm KH": k.loai_hinh,
-      "A2–A4 (tr)": Math.round(k.qua_han / 1e5) / 10, "A2–A4 kỳ trước (tr)": Math.round(k.prev_qua_han / 1e5) / 10,
+      [L + " (tr)"]: Math.round(k.qua_han / 1e5) / 10, [L + " kỳ trước (tr)"]: Math.round(k.prev_qua_han / 1e5) / 10,
       "Tổng dư nợ (tr)": Math.round(k.tong / 1e5) / 10, "Thu trong tháng (tr)": Math.round(k.thu / 1e5) / 10,
       "Quá hạn lâu nhất (ngày)": k.max_ngay, "Trạng thái": D.TRANG_THAI[k.trang_thai].label + (k.can_cap_nhat ? " (cần cập nhật)" : ""),
       "Giải trình & kế hoạch xử lý": k.gt ? k.gt.ke_hoach : "", "Tháng dự kiến thu": k.gt ? D.gtLines(k.gt).filter((x) => x.thang_du_kien).map((x) => (x.n ? x.n + ": " : "") + x.thang_du_kien).join("; ") : "",
@@ -350,6 +355,7 @@
     const list = (isA1 ? a1 : need).filter((k) => (tt === "all" || isA1 || k.trang_thai === tt || (tt === "can_cap_nhat" && k.can_cap_nhat)) && (!s || UI.deaccent(k.ten_kh + " " + (k.ten_kh_goc || "") + " " + k.ten_nv + " " + k.ma_kh).includes(s)));
     const han = D.hanInfo(data.meta.han_giai_trinh);
     const sel = open && khach.find((k) => k.key === open);
+    const L = D.gtLabel(data.meta.ky);
 
     return h("div", { className: "flex flex-col gap-3" },
       data.meta.han_giai_trinh && h("div", { className: "flex items-center gap-2 rounded-md border px-3 py-2 text-[13px] " + (han.days < 0 ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-800") },
@@ -363,11 +369,11 @@
         h(UI.SearchInput, { value: search, onChange: setSearch, placeholder: "Tìm khách hàng, sale…", className: "w-64" }),
         h("button", { type: "button", onClick: () => exportExcel(list, data.meta), className: btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel")),
 
-      list.length === 0 ? h(UI.Empty, null, isA1 ? "Không có khách hàng nào chỉ có nợ A1." : need.length === 0 ? "Không có khách hàng nào có nợ A2–A4 trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
-      : h(UI.Panel, { title: isA1 ? "Khách hàng × BU chỉ có nợ A1 (giải trình không bắt buộc, tách theo người giải trình)" : "Khách hàng × BU phải giải trình (nợ A2–A4, tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
+      list.length === 0 ? h(UI.Empty, null, isA1 ? "Không có khách hàng nào chỉ có nợ A1." : need.length === 0 ? "Không có khách hàng nào có nợ " + L + " trong phạm vi của bạn." : "Không có dòng phù hợp bộ lọc.")
+      : h(UI.Panel, { title: isA1 ? "Khách hàng × BU chỉ có nợ A1 (giải trình không bắt buộc, tách theo người giải trình)" : "Khách hàng × BU phải giải trình (nợ " + L + ", tách theo người giải trình)", subtitle: list.length + " dòng · triệu đồng · bấm vào dòng để xem chi tiết và giải trình" },
           h("div", { className: "overflow-x-auto" }, h("table", { className: T.table },
             h("thead", null, h("tr", { className: T.headRow },
-              ["Khách hàng", "Sale", "BU", isA1 ? "A1" : "A2–A4", isA1 ? "Tổng quá hạn kỳ trước" : "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
+              ["Khách hàng", "Sale", "BU", isA1 ? "A1" : L, isA1 ? "Tổng quá hạn kỳ trước" : "+/- kỳ trước", "Tổng dư nợ", "Quá hạn lâu nhất", "Thu trong tháng", "Tháng dự kiến thu", "Trạng thái", ""]
                 .map((x, i) => h("th", { key: i, className: "px-3 py-2 text-center align-middle font-semibold" + (i === 0 ? " min-w-[200px]" : i === 1 ? " min-w-[140px]" : "") }, x)))),
             h("tbody", null, list.map((k, i) => {
               const d = k.qua_han - k.prev_qua_han;
@@ -390,7 +396,7 @@
                   : h("span", { className: "text-slate-300" }, "—")),
                 h("td", { className: T.td }, h("div", { className: "flex flex-col items-start gap-1" },
                   !k.can_gt && k.trang_thai === "chua" ? h(UI.Badge, { tone: "grey" }, "Không bắt buộc") : h(D.StatusBadge, { st: k.trang_thai }),
-                  k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: k.gt.du_no_qua_han != null ? "A2–A4 lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" : "Số A2–A4 đã thay đổi so với lúc lưu" }, "Cần cập nhật"))),
+                  k.can_cap_nhat && h(UI.Badge, { tone: "amber", title: k.gt.du_no_qua_han != null ? L + " lúc lưu " + fmtTr(k.gt.du_no_qua_han) + " tr, hiện " + fmtTr(k.qua_han) + " tr" : "Số " + L + " đã thay đổi so với lúc lưu" }, "Cần cập nhật"))),
                 h("td", { className: T.td }, h("span", { className: "whitespace-nowrap text-[12px] " + (action === "Xem" ? "text-slate-400" : "font-semibold text-blue-600") }, action)));
             }))))),
 

@@ -6,7 +6,13 @@
   const { api, errorText } = window.DEBT_API;
   const R = window.DEBT_ROUTER;
   const UI = window.DEBT_UI;
-  const NHOM_GT = window.DEBT_CONFIG.NHOM_GIAI_TRINH;
+  const C = window.DEBT_CONFIG;
+  const NHOM_TREN_AT = C.NHOM_TREN_AT;
+  // Nhóm nợ bắt buộc giải trình của kỳ: từ kỳ C.A1_BAT_BUOC_TU bắt buộc cả A1 (phải khớp nhomGt() trong debt-api).
+  const nhomGt = (ky) => (ky && C.A1_BAT_BUOC_TU && ky >= C.A1_BAT_BUOC_TU ? ["A1", ...C.NHOM_GIAI_TRINH] : C.NHOM_GIAI_TRINH);
+  const a1BatBuoc = (ky) => nhomGt(ky).includes("A1");
+  // Nhãn khoảng nhóm bắt buộc: "A2–A4" / "A1–A4".
+  const gtLabel = (ky) => (a1BatBuoc(ky) ? "A1–A4" : "A2–A4");
   const NHOM = ["A0", "A1", "A2", "A3", "A4"];
   const NHOM_LABEL = {
     A0: "A0 – trong hạn", A1: "A1 – quá hạn trong mức an toàn", A2: "A2 – quá hạn trên mức an toàn, < 1 năm",
@@ -27,7 +33,7 @@
   const STATUS_BG = { chua: "bg-red-500", nhap: "bg-amber-400", tra_lai: "bg-red-300", cho_duyet: "bg-blue-300", da_duyet: "bg-blue-600", da_gt: "bg-blue-600" };
   // Trạng thái giải trình lưu trong DB → trạng thái hiển thị.
   const stOf = (gt) => !gt ? "chua" : PHE_DUYET ? gt.trang_thai : (gt.trang_thai === "nhap" ? "chua" : "da_gt");
-  // Giải trình viết theo số A2–A4 lúc lưu; số hiện tại lệch > 10% và > 10 triệu (vd sau khi nạp lại file) → "Cần cập nhật".
+  // Giải trình viết theo số nợ bắt buộc giải trình lúc lưu; số hiện tại lệch > 10% và > 10 triệu (vd sau khi nạp lại file) → "Cần cập nhật".
   const canCapNhat = (luc_luu, hien_tai) => luc_luu != null && Math.abs((hien_tai || 0) - luc_luu) > Math.max(10e6, 0.1 * Math.abs(luc_luu));
 
   // ── Cache theo kỳ; Reload trên header xoá cache ──
@@ -153,9 +159,10 @@
   }
 
   // Bảng đơn vị giải trình của kỳ = KH × ngành hàng × nhóm giải trình (area manager phụ trách, hoặc sale tự giải trình):
-  // số dư theo nhóm nợ, A2–A4, so kỳ trước, thu trong tháng, giải trình.
+  // số dư theo nhóm nợ, nợ bắt buộc giải trình (qua_han: A2–A4, từ kỳ áp dụng là A1–A4), so kỳ trước, thu trong tháng, giải trình.
   function buildKhach(data, f) {
     const ky = data.meta.ky, kyTruoc = data.meta.ky_truoc;
+    const NHOM_GT = nhomGt(ky); // kỳ trước so cùng tập nhóm với kỳ này
     const rows = applyFilter(data.agg, f);
     const key = (r) => r.ma_kh + "\u0001" + r.nganh_hang + "\u0001" + (r.nhom_gt || "");
     const m = new Map();
@@ -210,7 +217,7 @@
   }
 
   // Giải trình theo nhóm nợ (gt.theo_nhom = { A4: { ke_hoach, thang_du_kien, hd_chon, so_tien }, … }).
-  // Giải trình lưu trước khi tách nhóm (theo_nhom null) = "bản chung": áp cho mọi nhóm A2–A4 như trước.
+  // Giải trình lưu trước khi tách nhóm (theo_nhom null) = "bản chung": áp cho mọi nhóm bắt buộc của kỳ.
   const NHOM_GT_ORDER = ["A4", "A3", "A2", "A1"];
   const isLegacyGt = (gt) => !!gt && !gt.theo_nhom;
   const secOf = (gt, n) => (gt && gt.theo_nhom ? gt.theo_nhom[n] || null : null);
@@ -225,7 +232,7 @@
   };
 
   window.DEBT_DATA = {
-    NHOM, NHOM_LABEL, NHOM_GT, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, hasFilter, KyScreen, applyFilter, sum, groupSum,
+    NHOM, NHOM_LABEL, NHOM_TREN_AT, nhomGt, a1BatBuoc, gtLabel, TRANG_THAI, PHE_DUYET, STATUS_LIST, DONE, STATUS_BG, stOf, canCapNhat, useKyList, useKyData, useFilters, hasFilter, KyScreen, applyFilter, sum, groupSum,
     buildKhach, hanInfo, StatusBadge, invalidate, NHOM_GT_ORDER, isLegacyGt, secOf, gtLines,
   };
 })();

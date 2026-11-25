@@ -11,8 +11,12 @@ window.DEBT_CONFIG = {
   // Chế độ demo: mở trang với ?demo=1 → không gọi Supabase, dữ liệu lưu trong trình duyệt (IndexedDB).
   DEMO: new URLSearchParams(location.search).has("demo"),
 
-  // Nhóm nợ bắt buộc giải trình.
+  // Nhóm nợ quá hạn trên mức an toàn (chỉ số báo cáo "A2–A4", không đổi theo kỳ).
+  NHOM_TREN_AT: ["A2", "A3", "A4"],
+  // Nhóm nợ bắt buộc giải trình: A2–A4; từ kỳ A1_BAT_BUOC_TU (yyyy-mm) bắt buộc cả A1.
+  // Đổi phải đổi cả A1_BAT_BUOC_TU trong debt-api.
   NHOM_GIAI_TRINH: ["A2", "A3", "A4"],
+  A1_BAT_BUOC_TU: "2026-11",
 
   // Luồng phê duyệt: tạm tắt — chỉ còn "Chưa / Đã giải trình". Bật lại phải đổi cả PHE_DUYET trong debt-api.
   PHE_DUYET: false,

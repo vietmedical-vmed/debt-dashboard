@@ -219,8 +219,12 @@ const KY_RE = /^\d{4}-\d{2}$/;
 const needKy = (ky: unknown) => { if (typeof ky !== "string" || !KY_RE.test(ky)) throw new HttpError("bad_ky"); return ky; };
 const str = (v: unknown, max = 2000) => (v == null || v === "" ? null : String(v).slice(0, max));
 const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-const QUA_HAN = ["A2", "A3", "A4"];
-// Hóa đơn hiện trong popup giải trình: A1 (giải trình không bắt buộc) + A2–A4 (bắt buộc).
+// Nhóm nợ bắt buộc giải trình: A2–A4; từ kỳ A1_BAT_BUOC_TU bắt buộc cả A1.
+// Phải khớp NHOM_GIAI_TRINH + A1_BAT_BUOC_TU trong dashboard/assets/js/config.js.
+const NHOM_GT_GOC = ["A2", "A3", "A4"];
+const A1_BAT_BUOC_TU = "2026-11";
+const nhomGt = (ky: string) => (ky >= A1_BAT_BUOC_TU ? ["A1", ...NHOM_GT_GOC] : NHOM_GT_GOC);
+// Hóa đơn hiện trong popup giải trình: A1–A4 (A1 bắt buộc hay không tùy kỳ).
 const HD_GT = ["A1", "A2", "A3", "A4"];
 const thangOk = (v: unknown) => {
   const t = String(v || "");
@@ -228,10 +232,11 @@ const thangOk = (v: unknown) => {
 };
 const trText = (v: number) => String(Math.round(v / 1e5) / 10).replace(".", ",") + " tr";
 // Giải trình theo nhóm nợ (2026-11-17): mỗi nhóm A1–A4 đang có nợ của đơn vị = 1 phần
-// { ke_hoach, thang_du_kien, hd_chon, so_tien }. A2–A4 bắt buộc; A1 không bắt buộc (trừ khi đơn vị chỉ có A1).
+// { ke_hoach, thang_du_kien, hd_chon, so_tien }. Nhóm trong nhomGt(kỳ) bắt buộc; còn lại (A1 trước kỳ áp dụng)
+// không bắt buộc, trừ khi đơn vị chỉ có A1.
 // Trả thêm các cột tổng hợp (ke_hoach gộp, tháng sớm nhất, tổng tiền, mọi hóa đơn) cho màn / báo cáo cũ.
 const NHOM_ORDER = ["A4", "A3", "A2", "A1"];
-function buildTheoNhom(hdRows: any[], keys: string[], input: any) {
+function buildTheoNhom(hdRows: any[], keys: string[], input: any, QUA_HAN: string[]) {
   const present = NHOM_ORDER.filter((n) => hdRows.some((r) => r.nhom_no === n && Number(r.con_no || 0) > 0.5));
   const out: Record<string, any> = {};
   const missing: string[] = [];
@@ -406,13 +411,13 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const uk = (r: any) => unitKey(r.ma_kh, r.nganh_hang, r.nhom_gt);
       const unitNhom = new Map<string, string>();
       for (const r of aggV) unitNhom.set(uk(r), r.nhom_gt);
-      // Đơn vị thấy trọn (mọi dòng trong phạm vi) → được xem số A2–A4 lúc lưu; không thì ẩn số đó.
+      // Đơn vị thấy trọn (mọi dòng trong phạm vi) → được xem số nợ bắt buộc giải trình lúc lưu; không thì ẩn số đó.
       const unitTotal = new Map<string, number>(), unitVis = new Map<string, number>(), qhFull = new Map<string, number>();
-      const qhNhom = new Map<string, Set<string>>(); // đơn vị → các nhóm A2–A4 đang có nợ
+      const qhNhom = new Map<string, Set<string>>(); // đơn vị → các nhóm bắt buộc đang có nợ
       for (const r of agg) {
         const k = uk(r);
         unitTotal.set(k, (unitTotal.get(k) ?? 0) + 1);
-        if (r.ky === ky && QUA_HAN.includes(r.nhom_no)) {
+        if (r.ky === ky && nhomGt(ky).includes(r.nhom_no)) {
           qhFull.set(k, (qhFull.get(k) ?? 0) + Number(r.con_no || 0));
           if (Number(r.con_no || 0) > 0.5) { if (!qhNhom.has(k)) qhNhom.set(k, new Set()); qhNhom.get(k)!.add(r.nhom_no); }
         }
@@ -420,7 +425,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       for (const r of aggV) { const k = uk(r); unitVis.set(k, (unitVis.get(k) ?? 0) + 1); }
       const fullUnit = (k: string) => perm.all || (unitVis.get(k) ?? 0) === (unitTotal.get(k) ?? 0);
       // "Cần cập nhật" tính trên số trọn đơn vị ở server (lệch > 10% và > 10 triệu so với lúc lưu).
-      // Giải trình theo nhóm: nhóm A2–A4 mới phát sinh (vd sau khi nạp lại) mà chưa có phần giải trình → cũng cần cập nhật.
+      // Giải trình theo nhóm: nhóm bắt buộc mới phát sinh (vd sau khi nạp lại) mà chưa có phần giải trình → cũng cần cập nhật.
       const thieuNhom = (r: any) => !!r.theo_nhom && [...(qhNhom.get(uk(r)) ?? [])].some((n) => !(r.theo_nhom[n] && r.theo_nhom[n].ke_hoach));
       const canCapNhat = (r: any) => r.ky === ky && r.trang_thai !== "nhap" && (thieuNhom(r) || (r.du_no_qua_han != null
         && Math.abs((qhFull.get(uk(r)) ?? 0) - Number(r.du_no_qua_han)) > Math.max(10e6, 0.1 * Math.abs(Number(r.du_no_qua_han)))));
@@ -492,7 +497,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const { data: cur } = await D().from("giai_trinh").select("*").eq("ky", ky).eq("ma_kh", ma).eq("nganh_hang", nganh).eq("nhom_gt", nhom).maybeSingle();
       if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) throw new HttpError("da_gui_khong_sua");
 
-      const qh = all.filter((r) => QUA_HAN.includes(r.nhom_no));
+      const qh = all.filter((r) => nhomGt(ky).includes(r.nhom_no));
       const duNo = qh.reduce((t, r) => t + Number(r.con_no || 0), 0);
 
       const submit = PHE_DUYET ? !!p.submit : true; // không duyệt: lưu = đã giải trình
@@ -504,7 +509,7 @@ async function handle(db: SupabaseClient, s: Session, action: string, p: any) {
       const chon = keys.filter((k) => want.has(k));
       const soTien = hdRows.reduce((t, r, i) => t + (want.has(keys[i]) ? Number(r.con_no || 0) : 0), 0);
       // Bản mới gửi fields.theo_nhom (giải trình theo từng nhóm nợ); bản cũ gửi ke_hoach / thang_du_kien chung.
-      const tn = f.theo_nhom && typeof f.theo_nhom === "object" ? buildTheoNhom(hdRows, keys, f.theo_nhom) : null;
+      const tn = f.theo_nhom && typeof f.theo_nhom === "object" ? buildTheoNhom(hdRows, keys, f.theo_nhom, nhomGt(ky)) : null;
       const rec: Record<string, unknown> = {
         ky, ma_kh: ma, nganh_hang: nganh, nhom_gt: nhom, ten_nv: nvs.join(", "),
         ten_kh: str(f.ten_kh, 300) ?? all[0]?.ten_kh ?? cur?.ten_kh ?? null,

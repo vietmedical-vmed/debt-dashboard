@@ -30,7 +30,7 @@ Frontend (GitHub Pages)            Backend (Supabase nrfxymnfmjhbsgpipvkb)
 |---|---|---|
 | Tổng quan | Tất cả | KPI, tiến độ giải trình, biến động dư nợ, cơ cấu nhóm nợ / nhóm KH, top 15 KH quá hạn |
 | Giải trình | Area manager, quản lý, sale (xem) | Danh sách KH × sale có nợ A2–A4; popup hóa đơn A2–A4, giải trình + tháng dự kiến thu, duyệt / trả lại, lịch sử |
-| Tổng hợp A1–A4 | Tất cả (số liệu theo quyền) | Nhóm nợ A4→A1 × KH, cột BU → team (dm_ps), cột giải trình (đã/chưa, A1 không bắt buộc), chi tiết giải trình, tháng dự kiến thu, xuất Excel |
+| Tổng hợp A1–A4 | Tất cả (số liệu theo quyền) | Nhóm nợ A4→A1 × KH, cột BU → team (dm_ps), cột giải trình (đã/chưa; từ kỳ T11/2026 bắt buộc cả A1), chi tiết giải trình, tháng dự kiến thu, xuất Excel |
 | Theo sale | Tất cả | Dư nợ, tiến độ giải trình, số KH hẹn thu kỳ trước đã có tiền về theo sale |
 | Hàng vay chưa xuất HĐ | Tất cả | Theo KH × sale, xem chứng từ, xuất Excel |
 | Quản trị | Admin | Nạp file, hạn giải trình, khoá kỳ, xem phân quyền theo dm_ps, gắn tay / người duyệt riêng |
@@ -54,7 +54,7 @@ Số tổng toàn khối (biến động dư nợ, đối chiếu) chỉ trả v
 
 ## Nội dung giải trình
 
-Đơn vị giải trình: **kỳ × khách hàng × ngành hàng × người giải trình** (area manager phụ trách sale; sale không có AM thì nhóm riêng của sale đó) có nợ A2–A4 — mỗi đơn vị giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp, nhưng chỉ thấy tên, số tiền, hóa đơn của sale mình phụ trách (số A2–A4 lúc lưu của cả cặp bị ẩn; cờ "Cần cập nhật" tính ở server). Popup chỉ hiện hóa đơn A2–A4.
+Đơn vị giải trình: **kỳ × khách hàng × ngành hàng × người giải trình** (area manager phụ trách sale; sale không có AM thì nhóm riêng của sale đó) có nợ A2–A4 — mỗi đơn vị giải trình 1 lần: **Giải trình & kế hoạch xử lý** + **Tháng dự kiến thu** (`yyyy-mm`). Area manager phụ trách ít nhất 1 sale trong cặp thì giải trình cho cả cặp, nhưng chỉ thấy tên, số tiền, hóa đơn của sale mình phụ trách (số A2–A4 lúc lưu của cả cặp bị ẩn; cờ "Cần cập nhật" tính ở server). Popup hiện hóa đơn A1–A4. **Từ kỳ T11/2026 bắt buộc giải trình cả A1** (`A1_BAT_BUOC_TU` trong `config.js` và `debt-api`); kỳ trước đó giữ A2–A4.
 Luồng phê duyệt **đang tắt** (`PHE_DUYET = false` ở `config.js` và `debt-api`): lưu giải trình = "Đã giải trình", area manager sửa lại được tới khi admin khoá kỳ.
 Bật lại thì có: lưu nháp / gửi duyệt → admin hoặc manager duyệt hoặc trả lại (bắt buộc nhận xét).
 

@@ -64,7 +64,7 @@ Quyền đi theo `shared.dm_ps` (dùng chung với sale-target):
 
 ## C. Thay đổi thường gặp
 
-- **Bắt buộc giải trình cả A1**: sửa `NHOM_GIAI_TRINH` trong `config.js` **và** hằng `QUA_HAN` trong `supabase/functions/debt-api/index.ts`, rồi deploy lại `debt-api`.
+- **Nhóm nợ bắt buộc giải trình**: A2–A4; từ kỳ T11/2026 bắt buộc cả A1 (A1–A4). Kỳ trước T11/2026 giữ quy tắc cũ. Đổi kỳ áp dụng: sửa `A1_BAT_BUOC_TU` trong `dashboard/assets/js/config.js` **và** trong `supabase/functions/debt-api/index.ts`, rồi deploy lại `debt-api`. Chỉ số "Quá hạn trên mức an toàn A2–A4" (`NHOM_TREN_AT`) không đổi.
 - Mỗi lần sửa file JS: đổi `?v=` trong `dashboard/index.html` để trình duyệt không dùng bản cũ.
 - Sửa `supabase/functions/*`: phải deploy tay (push GitHub không deploy edge function).
 

@@ -10,7 +10,8 @@
 (function () {
   if (!window.DEBT_CONFIG.DEMO) return;
   const DB_NAME = "debt-demo", KEY = "state";
-  const NHOM = window.DEBT_CONFIG.NHOM_GIAI_TRINH;
+  // Nhóm bắt buộc giải trình theo kỳ: giống nhomGt() trong data.js / debt-api.
+  const nhomGt = (ky) => (ky && window.DEBT_CONFIG.A1_BAT_BUOC_TU && ky >= window.DEBT_CONFIG.A1_BAT_BUOC_TU ? ["A1", ...window.DEBT_CONFIG.NHOM_GIAI_TRINH] : window.DEBT_CONFIG.NHOM_GIAI_TRINH);
   const PHE_DUYET = !!window.DEBT_CONFIG.PHE_DUYET;
   const deaccent = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
   const slug = (name) => deaccent(name).replace(/[^a-z0-9]/g, "");
@@ -77,13 +78,13 @@
   }
 
   const err = (code) => { throw new Error(code); };
-  // Hóa đơn hiện trong popup: A1 (không bắt buộc) + A2–A4. Khoá hóa đơn giống debt-api / giai-trinh.js.
-  const HD_GT = ["A1", ...NHOM];
+  // Hóa đơn hiện trong popup: A1–A4. Khoá hóa đơn giống debt-api / giai-trinh.js.
+  const HD_GT = ["A1", "A2", "A3", "A4"];
   // Giải trình theo nhóm nợ: giống buildTheoNhom() trong debt-api.
   const NHOM_ORDER = ["A4", "A3", "A2", "A1"];
   const thangOk = (v) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(v || "") ? v : null);
   const trText = (v) => String(Math.round(v / 1e5) / 10).replace(".", ",") + " tr";
-  function buildTheoNhom(hdRows, keys, input) {
+  function buildTheoNhom(hdRows, keys, input, NHOM) {
     const present = NHOM_ORDER.filter((n) => hdRows.some((r) => r.nhom_no === n && r.con_no > 0.5));
     const out = {}, missing = [];
     for (const n of present) {
@@ -203,6 +204,7 @@
             const k = uk(g.ma_kh, g.nganh_hang, g.nhom_gt);
             const rows = all.filter((r) => ukr(r) === k);
             const full = P.all || rows.every((r) => canSee(P, r));
+            const NHOM = nhomGt(p.ky);
             const qh = rows.filter((r) => r.ky === p.ky && NHOM.includes(r.nhom_no)).reduce((t, r) => t + r.con_no, 0);
             const qhN = new Set(rows.filter((r) => r.ky === p.ky && NHOM.includes(r.nhom_no) && r.con_no > 0.5).map((r) => r.nhom_no));
             const thieu = !!g.theo_nhom && [...qhN].some((n) => !(g.theo_nhom[n] && g.theo_nhom[n].ke_hoach));
@@ -239,12 +241,13 @@
         let cur = S.giai_trinh.find((g) => g.ky === p.ky && g.ma_kh === p.ma_kh && g.nganh_hang === p.nganh_hang && g.nhom_gt === p.nhom_gt);
         if (PHE_DUYET && cur && !["nhap", "tra_lai"].includes(cur.trang_thai)) err("da_gui_khong_sua");
         if (!PHE_DUYET) p = { ...p, submit: true };
+        const NHOM = nhomGt(p.ky);
         const qh = rowsAll.filter((r) => NHOM.includes(r.nhom_no));
         const f = p.fields || {};
         const hdRows = rowsAll.filter((r) => HD_GT.includes(r.nhom_no)).sort((a, b) => b.so_ngay_qua_han - a.so_ngay_qua_han);
         const keys = hdKeys(hdRows), want = new Set(Array.isArray(f.hd_chon) ? f.hd_chon.map(String) : []);
         const chon = keys.filter((k) => want.has(k));
-        const tn = f.theo_nhom && typeof f.theo_nhom === "object" ? buildTheoNhom(hdRows, keys, f.theo_nhom) : null;
+        const tn = f.theo_nhom && typeof f.theo_nhom === "object" ? buildTheoNhom(hdRows, keys, f.theo_nhom, NHOM) : null;
         const rec = {
           ky: p.ky, ma_kh: p.ma_kh, nganh_hang: p.nganh_hang, nhom_gt: p.nhom_gt, ten_nv: nvs.join(", "), ten_kh: f.ten_kh || (rowsAll[0] && rowsAll[0].ten_kh) || null,
           du_no_qua_han: qh.reduce((t, r) => t + r.con_no, 0),

@@ -26,7 +26,7 @@
     const cur = rows.filter((r) => r.ky === ky), prev = rows.filter((r) => r.ky === kt);
     const tong = D.sum(cur), tongP = D.sum(prev);
     const qh = D.sum(cur.filter((r) => r.nhom_no !== "A0")), qhP = D.sum(prev.filter((r) => r.nhom_no !== "A0"));
-    const nghiem = D.sum(cur.filter((r) => D.NHOM_GT.includes(r.nhom_no))), nghiemP = D.sum(prev.filter((r) => D.NHOM_GT.includes(r.nhom_no)));
+    const nghiem = D.sum(cur.filter((r) => D.NHOM_TREN_AT.includes(r.nhom_no))), nghiemP = D.sum(prev.filter((r) => D.NHOM_TREN_AT.includes(r.nhom_no)));
     const bbbg = D.sum(cur.filter((r) => r.khong_chung_tu && r.bu !== "cttm"));
     const bbbgP = D.sum(prev.filter((r) => r.khong_chung_tu && r.bu !== "cttm"));
     const hv = D.sum(D.applyFilter(data.hang_vay, f), (r) => r.gia_tri);
@@ -51,7 +51,7 @@
     const items = D.STATUS_LIST.map((st) => ({ st, n: cnt(st) }));
     const tone = D.STATUS_BG;
     return h(UI.Panel, {
-      title: "Tiến độ giải trình nợ A2–A4 · " + fmtKyLabel(meta.ky),
+      title: "Tiến độ giải trình nợ " + D.gtLabel(meta.ky) + " · " + fmtKyLabel(meta.ky),
       subtitle: need.length + " khách hàng × sale phải giải trình" + (meta.han_giai_trinh ? " · Hạn " + UI.fmtDate(meta.han_giai_trinh) + " (" + han.text + ")" : " · Chưa đặt hạn"),
       right: h("a", { href: R.href("/giai-trinh", { ky: meta.ky }), className: UI.btn.secondary }, "Mở danh sách giải trình ", h(UI.I.ArrowRight, { size: 14 })),
     },
@@ -99,7 +99,7 @@
           D.NHOM.map((n, i) => {
             const c = cur.get(n) || 0, p = prev.get(n) || 0;
             return h("tr", { key: n, className: T.row(i) },
-              h("td", { className: T.td + (D.NHOM_GT.includes(n) ? " font-medium text-red-700" : "") }, D.NHOM_LABEL[n]),
+              h("td", { className: T.td + (D.NHOM_TREN_AT.includes(n) ? " font-medium text-red-700" : "") }, D.NHOM_LABEL[n]),
               h("td", { className: T.num }, fmtTr(c)), h("td", { className: T.num + " text-slate-500" }, fmtTr(p)),
               h("td", { className: T.num }, h(Delta, { v: c - p, neutral: n === "A0" })), h("td", { className: T.num + " " + (n === "A0" ? "text-slate-600" : UI.deltaCls(c - p)) }, p ? pctSigned((c - p) / p) : "—"),
               h("td", { className: T.num }, fmtPct(tong ? c / tong : null)),
@@ -115,10 +115,10 @@
     const ky = data.meta.ky;
     const cur = D.applyFilter(data.agg, f).filter((r) => r.ky === ky);
     const groups = [...new Set(cur.map((r) => r.loai_hinh || "(khác)"))];
-    const tongQH = D.sum(cur.filter((r) => D.NHOM_GT.includes(r.nhom_no)));
+    const tongQH = D.sum(cur.filter((r) => D.NHOM_TREN_AT.includes(r.nhom_no)));
     const rows = groups.map((g) => {
       const x = cur.filter((r) => (r.loai_hinh || "(khác)") === g);
-      return { g, tong: D.sum(x), qh: D.sum(x.filter((r) => D.NHOM_GT.includes(r.nhom_no))) };
+      return { g, tong: D.sum(x), qh: D.sum(x.filter((r) => D.NHOM_TREN_AT.includes(r.nhom_no))) };
     }).sort((a, b) => b.tong - a.tong);
     return h(UI.Panel, { title: "Cơ cấu nợ theo nhóm khách hàng (triệu đồng)" },
       h("table", { className: T.table },

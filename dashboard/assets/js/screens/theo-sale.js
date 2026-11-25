@@ -44,8 +44,8 @@
       if (r.ky === ky) {
         s.tong += r.con_no;
         if (r.nhom_no === "A1") s.A1 += r.con_no;
-        if (D.NHOM_GT.includes(r.nhom_no)) s.qh += r.con_no;
-      } else if (r.ky === kt && D.NHOM_GT.includes(r.nhom_no)) s.qhP += r.con_no;
+        if (D.NHOM_TREN_AT.includes(r.nhom_no)) s.qh += r.con_no; // cột "A2–A4" (A1 có cột riêng)
+      } else if (r.ky === kt && D.NHOM_TREN_AT.includes(r.nhom_no)) s.qhP += r.con_no;
     }
     for (const t of D.applyFilter(data.thu_tien, f)) if (m.has(t.ten_nv)) get(t.ten_nv).thu += t.so_tien;
     for (const k of D.buildKhach(data, f)) {
@@ -65,7 +65,7 @@
   const NO_TEAM = "(chưa có trong dm_ps)";
   const SEP = "\u0001";
 
-  // Nhóm hiển thị trong bảng tổng hợp: A4 → A1. Chỉ A2–A4 bắt buộc giải trình.
+  // Nhóm hiển thị trong bảng tổng hợp: A4 → A1. Nhóm bắt buộc giải trình theo kỳ: D.nhomGt(ky).
   const PIVOT_NHOM = ["A4", "A3", "A2", "A1"];
 
   // Cộng dồn 1 nhóm nợ từ các dòng KH × người giải trình (dùng cả khi lọc trên màn hình).
@@ -117,6 +117,7 @@
     for (const c of colList) { const last = bus[bus.length - 1]; if (last && last.bu === c.bu) last.n++; else bus.push({ bu: c.bu, n: 1 }); }
     // Giải trình theo đơn vị KH × ngành × nhóm giải trình (area manager / sale tự giải trình)
     const khList = D.buildKhach(data, f);
+    const G = D.nhomGt(ky);
     const khMap = new Map(khList.map((k) => [k.key, k]));
     const byPair = new Map(); // "ma\u0001ngành" → [đơn vị]
     for (const k of khList) {
@@ -128,7 +129,7 @@
     // Phần giải trình của đơn vị cho nhóm nợ n (giải trình theo nhóm). Bản chung (lưu trước khi tách nhóm) áp cho A2–A4.
     const secFor = (k, n) => {
       if (!hasGt(k)) return null;
-      if (D.isLegacyGt(k.gt)) return D.NHOM_GT.includes(n) ? { ke_hoach: k.gt.ke_hoach, thang_du_kien: k.gt.thang_du_kien, so_tien: k.gt.so_tien_du_kien } : null;
+      if (D.isLegacyGt(k.gt)) return G.includes(n) ? { ke_hoach: k.gt.ke_hoach, thang_du_kien: k.gt.thang_du_kien, so_tien: k.gt.so_tien_du_kien } : null;
       const sec = D.secOf(k.gt, n);
       return sec && sec.ke_hoach ? sec : null;
     };
@@ -136,7 +137,7 @@
     const status = (ma, nganhSet, nhomGt, n) => {
       const units = [...nganhSet].flatMap((ng) => byPair.get(ma + SEP + ng) || []).filter((k) => k.nhom_gt === nhomGt)
         .sort((a, b) => String(a.nganh_hang).localeCompare(String(b.nganh_hang), "vi") || String(a.nhom_label).localeCompare(String(b.nhom_label), "vi"));
-      const bat = D.NHOM_GT.includes(n);
+      const bat = G.includes(n);
       const need = bat ? units : [];
       const doneFor = (k) => !!secFor(k, n);
       // Mỗi đơn vị (KH × ngành) = 1 dòng trong ô Chi tiết / Tháng
@@ -164,8 +165,8 @@
       };
     };
     const groupsOut = PIVOT_NHOM.filter((n) => groups.has(n)).map((n) => {
-      // A1 không bắt buộc giải trình, không đếm vào tiến độ; có nút "+ Giải trình" để giải trình tự nguyện phần A1.
-      const ref = !D.NHOM_GT.includes(n);
+      // Kỳ A1 không bắt buộc: dòng A1 không đếm vào tiến độ; có nút "+ Giải trình" để giải trình tự nguyện phần A1.
+      const ref = !G.includes(n);
       const list = [...groups.get(n).values()];
       const perKh = new Map(); // ma_kh → tổng KH trong nhóm (để các dòng cùng KH đứng liền nhau)
       for (const x of list) perKh.set(x.ma_kh, (perKh.get(x.ma_kh) || 0) + x.tong);
@@ -223,8 +224,8 @@
   const MODE_KEY = "debt.tonghop.mode";
 
   function Pivot({ data, f, patchGt, kyMeta }) {
-    // A1 không bắt buộc giải trình → mặc định thu gọn.
-    const [closed, setClosed] = useState({ A1: true });
+    // Kỳ A1 không bắt buộc giải trình → nhóm A1 mặc định thu gọn.
+    const [closed, setClosed] = useState(() => (D.a1BatBuoc(data.meta.ky) ? {} : { A1: true }));
     const [openKey, setOpenKey] = useState(null);
     const [q, setQ] = useState("");
     const [st, setSt] = useState("all");
@@ -285,8 +286,8 @@
     const nCols = pv.cols.length + 5;
     return h(UI.Panel, {
       title: "Tổng hợp nợ quá hạn (A1–A4) theo " + (twoRow ? "team" : "BU") + " · " + fmtKyLabel(data.meta.ky),
-      subtitle: h(React.Fragment, null, "Triệu đồng · chỉ A2–A4 bắt buộc giải trình (theo KH × BU)",
-        h(UI.Hint, { size: 12, text: "Cột theo BU → team của sale trong dm_ps.\nBấm tên KH để mở giải trình (KH nhiều BU / nhiều người giải trình: mở tab Giải trình).\nBấm dòng nhóm nợ để mở / thu gọn.\nMỗi nhóm nợ có phần giải trình, tháng và tiền thu riêng; nhóm A1 không bắt buộc.\nXuất Excel luôn đủ dữ liệu theo team, không theo ô tìm / lọc trên màn hình." })),
+      subtitle: h(React.Fragment, null, "Triệu đồng · " + (D.a1BatBuoc(data.meta.ky) ? "bắt buộc giải trình cả 4 nhóm A1–A4" : "chỉ A2–A4 bắt buộc giải trình") + " (theo KH × BU)",
+        h(UI.Hint, { size: 12, text: "Cột theo BU → team của sale trong dm_ps.\nBấm tên KH để mở giải trình (KH nhiều BU / nhiều người giải trình: mở tab Giải trình).\nBấm dòng nhóm nợ để mở / thu gọn.\nMỗi nhóm nợ có phần giải trình, tháng và tiền thu riêng" + (D.a1BatBuoc(data.meta.ky) ? "." : "; nhóm A1 không bắt buộc.") + "\nXuất Excel luôn đủ dữ liệu theo team, không theo ô tìm / lọc trên màn hình." })),
       right: h("button", { type: "button", onClick: () => exportPivot(mode === "team" ? pv : buildPivot(data, f, "team"), data.meta.ky), className: UI.btn.secondary }, h(UI.I.Download, { size: 14 }), "Xuất Excel"),
     },
       h("div", { className: "flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2" },
@@ -437,7 +438,7 @@
           h("tr", { className: T.headRow },
             sortTh({ c: { key: "nv", label: "Sale" }, sticky: true, rowSpan: 2, className: "text-left" }),
             h("th", { className: "bg-slate-50 px-3 py-1 text-center font-semibold" + BL, colSpan: 5 }, "Công nợ"),
-            h("th", { className: "bg-slate-50 px-3 py-1 text-center font-semibold" + BL, colSpan: D.STATUS_LIST.length + 2 }, "Giải trình A2–A4 (số KH × BU)"),
+            h("th", { className: "bg-slate-50 px-3 py-1 text-center font-semibold" + BL, colSpan: D.STATUS_LIST.length + 2 }, "Giải trình " + D.gtLabel(ky) + " (số KH × BU)"),
             h("th", { className: "bg-slate-50 px-3 py-1 text-center font-semibold" + BL, colSpan: 2 }, "Hẹn thu kỳ trước (số KH × BU)",
               h(UI.Hint, { size: 12, text: "Hẹn thu = số KH × BU mà giải trình " + fmtKyLabel(kt) + " dự kiến thu trong hoặc trước " + fmtKyLabel(ky) + ".\nĐã có thu = số KH đó có tiền về trong tháng." }))),
           h("tr", { className: T.headRow },
